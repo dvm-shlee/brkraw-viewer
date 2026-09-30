@@ -225,7 +225,7 @@ def test_timecourse_cache_key_for_a_folder_uses_the_2dseq_time(controller, tmp_p
 def test_default_cache_settings_are_the_ones_the_code_reads():
     cache = viewer_config.default_viewer_config()["cache"]
     assert set(cache) == {"memory_limit_mb"}
-    assert cache["memory_limit_mb"] == 1024
+    assert cache["memory_limit_mb"] == 600
 
 
 def test_config_docs_describe_every_default_cache_setting_and_retired_keys():
@@ -244,7 +244,7 @@ def test_memory_limit_setting_is_read_by_the_controller(monkeypatch, tmp_path):
     cfg["cache"]["memory_limit_mb"] = 0
     assert ViewerController()._memory_limit_bytes == 0
     cfg["cache"]["memory_limit_mb"] = "bad"
-    assert ViewerController()._memory_limit_bytes == 1024 * MB
+    assert ViewerController()._memory_limit_bytes == 600 * MB
 
 
 # ---- 6. notice before loading a big reco: worker side ------------------------------------
@@ -270,6 +270,20 @@ def test_load_above_the_limit_asks_and_reads_nothing(worker_env):
     assert result.estimated_bytes == 20_000 and result.limit_bytes == 10_000
     assert result.shm_name is None and result.error is None
     assert scan.reads == 0
+
+
+def test_default_limit_lets_500_mb_open_and_asks_before_1_gb(worker_env):
+    scan, _counts = worker_env
+    limit = viewer_config.default_viewer_config()["cache"]["memory_limit_mb"] * MB
+    for size_bytes, asks in ((500 * MB, False), (500 * 1000 * 1000, False), (1000 * 1000 * 1000, True), (1024 * MB, True)):
+        convert_worker._held_recos.clear()
+        convert_worker._meta_cache.clear()
+        scan.avail[1] = SimpleNamespace(file_visu_pars=_visu([size_bytes // 2], 1))  # 2 bytes per value
+        result = _load(0, memory_limit_bytes=limit)
+        assert result.needs_confirm is asks, size_bytes
+        if not asks:
+            _free(result)
+    assert scan.reads == 2
 
 
 def test_load_at_or_below_the_limit_does_not_ask(worker_env):
@@ -332,7 +346,7 @@ def _needs_confirm(job_id, estimated=3 * MB, limit=1 * MB):
 def test_request_carries_the_limit(controller):
     controller._request_viewer_volume()
     req = ctrl_submitted[-1]
-    assert req.memory_limit_bytes == 1024 * MB and req.memory_confirmed is False
+    assert req.memory_limit_bytes == 600 * MB and req.memory_confirmed is False
 
 
 def test_user_continues_then_the_load_is_sent_again_as_confirmed(controller):

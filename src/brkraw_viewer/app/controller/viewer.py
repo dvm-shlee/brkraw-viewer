@@ -47,7 +47,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MEMORY_LIMIT_MB = 1024
+DEFAULT_MEMORY_LIMIT_MB = 600
 
 
 def _memory_limit_bytes_from_config(cfg: dict) -> int:

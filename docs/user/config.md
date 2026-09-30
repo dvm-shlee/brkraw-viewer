@@ -24,13 +24,14 @@ in memory once loaded and up to about 5 times at the peak, measured on one 298.6
 ```yaml
 viewer:
   cache:
-    memory_limit_mb: 1024   # ask above this size in MB; 0 = never ask
+    memory_limit_mb: 600    # ask above this size in MB; 0 = never ask
 ```
 
-The default, 1024 MB, is provisional: the 298.6 MB scan that was measured stays below
-it, and a scan just above it would need about 3.7 GB once loaded and about 5 GB at the
-peak, which a 16 GB computer can still hold. Set it from your computer's memory and your
-largest scan. `cache.enabled` and `cache.max_items`
+The default is 600 MB, chosen for a laptop with 8 GB of memory (D-0094): a 500 MB 2dseq
+opens without asking, and a 1 GB one is announced before anything is read. A scan just
+above the default would need about 2.2 GB once loaded and about 3 GB at the peak
+(3.7 and 5 times the data size, measured on one 298.6 MB scan). Set it from your
+computer's memory and your largest scan; on a 16 GB computer 1024 is reasonable. `cache.enabled` and `cache.max_items`
 were never read by the viewer; they are removed from the defaults and ignored if they
 are still in an existing `config.yaml`. `viewer.cache.path`, if set, is only the disk
 cache folder that the viewer offers to clear when it closes.

@@ -22,8 +22,11 @@ If you draw overlays in a custom viewer:
 
 ## Code layout
 
-- `brkraw_viewer/apps/` contains tab-level controllers (viewer, convert, config, hooks).
-- `brkraw_viewer/frames/` contains reusable UI frames (viewer canvas, params panel, viewer config).
+- `brkraw_viewer/app/controller/` contains application and dataset controllers.
+- `brkraw_viewer/app/services/` and `app/workers/` contain integration services
+  and background work.
+- `brkraw_viewer/ui/main/` and `ui/tabs/` contain the Tk window and tab UI.
 
-This split keeps UI widgets reusable while keeping tab controllers easy to
-navigate.
+Keep shared visualization behavior in the Viewer and modality-specific panels
+in optional Viewer hooks. Protect behavior with tests before splitting a large
+controller into smaller components.

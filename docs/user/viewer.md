@@ -1,8 +1,8 @@
 # Viewer
 
-The Viewer tab is a fast, low-friction space for **visual QC and orientation checks**
-without committing to a conversion. It exists so researchers can confirm that a
-scan is the right one and oriented correctly before running a workflow.
+The default Viewer tab provides **visual QC and orientation checks** without
+committing to a conversion. The Viewer application also hosts specialized
+visualization panels supplied by optional extensions.
 
 This fits the brkraw philosophy by keeping the viewer lightweight while leaning
 on the same BrkRaw loaders and orientation logic used by the CLI.

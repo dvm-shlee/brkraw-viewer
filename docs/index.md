@@ -1,11 +1,12 @@
 # Brkraw Viewer
 
-BrkRaw Viewer is a lightweight GUI for browsing and inspecting Bruker datasets
-with a focus on stability and a clean separation between the core viewer and
-optional extensions.
+BrkRaw Viewer is the visualization application plugin for Bruker datasets.
+Its default GUI stays lightweight; optional extensions provide specialized
+visualization while sharing the Viewer host and BrkRaw data APIs.
 
-Its intent is simple: **keep inspection fast and local**, while delegating
-repeatable workflows to the brkraw CLI and extension ecosystem.
+The core BrkRaw package owns data loading and conversion. The Viewer owns
+common image display and interactive visualization, including the host for
+modality-specific panels.
 
 ## Highlights
 
@@ -27,8 +28,8 @@ datasets you care about and lets you reload the current session in one click.
 
 **Extensions/hooks**
 Extensions are delivered as viewer hooks discovered via the
-`brkraw.viewer.hook` entry point. Hooks can add new tabs and dataset callbacks
-without changing the core viewer, and they coexist with converter hooks and
+`brkraw.viewer.hook` entry point. Hooks can add tabs without changing the
+Viewer host, and they coexist with converter hooks and
 CLI hooks so UI features can build on the same rule/spec system as brkraw.
 For converter hooks, the Convert tab can render hook option forms when the
 hook exposes presets. BrkRaw splits hook args by function signature, so any

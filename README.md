@@ -16,9 +16,10 @@ user-facing interfaces.
 
 ## Scope and intent
 
-BrkRaw Viewer is designed for **interactive inspection** of Bruker
-Paravision datasets. It focuses on quick exploration and validation
-rather than data conversion or analysis.
+BrkRaw Viewer is the application plugin responsible for visualization of
+Bruker Paravision datasets across the BrkRaw ecosystem. Its default interface
+focuses on quick exploration and validation; specialized visualization is
+provided by optional Viewer hooks.
 
 The goal is to provide practical, researcher-focused features that are
 useful in everyday workflows, such as quick dataset triage, metadata
@@ -31,8 +32,9 @@ Typical use cases include:
 - Inspecting acquisition metadata before conversion
 - Lightweight visual sanity checks
 
-All data conversion and reproducible workflows are handled by the
-BrkRaw CLI and Python API.
+The Convert tab invokes BrkRaw conversion APIs. The conversion engine and
+reproducible workflow logic are owned by the BrkRaw core and its converter
+hooks.
 
 ---
 
@@ -81,11 +83,11 @@ install.
 ## Viewer hooks
 
 Viewer extensions are implemented as hooks discovered through
-`brkraw.viewer.hook`. Each hook can register a new tab and provide
-dataset callbacks, enabling feature panels to live outside the core
-viewer while staying compatible with BrkRaw rules, specs, and converter
-hooks. See `docs/dev/hooks.md` for the hook interface and entry point
-setup.
+`brkraw.viewer.hook`. Each hook can provide a tab in the Extensions panel,
+enabling feature panels to live outside the Viewer host while staying
+compatible with BrkRaw rules, specs, and converter hooks. The current host
+calls `build_tab` when a panel is selected; see `docs/dev/hooks.md` for the
+implemented interface and entry point setup.
 
 ---
 

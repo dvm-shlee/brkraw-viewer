@@ -8,9 +8,6 @@ resolution-markers = [
     "python_full_version < '3.10'",
 ]
 
-[manifest]
-constraints = [{ name = "brkraw", specifier = "<0.6" }]
-
 [[package]]
 name = "attrs"
 version = "26.1.0"
@@ -66,8 +63,8 @@ wheels = [
 
 [[package]]
 name = "brkraw"
-version = "0.5.7"
-source = { registry = "https://pypi.org/simple" }
+version = "0.6.0rc2"
+source = { git = "https://github.com/dvm-shlee/brkraw?tag=0.6.0rc2#a02cee2f22f3cf021ce743d646f0f060bf9d98bb" }
 dependencies = [
     { name = "jsonschema", version = "4.25.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "jsonschema", version = "4.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -79,10 +76,6 @@ dependencies = [
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pyyaml" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/c9/86ad85c4ef86a2680473b3f7319db60f8ad8053b6f62c3a01543b333a9e2/brkraw-0.5.7.tar.gz", hash = "sha256:fcf7073883c9d2dc27e47ff07ffe1bc39e9154e72a67b0a5553863d51e4f81b8", size = 1269610, upload-time = "2026-02-03T13:06:17.915Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6a/9a/33474a9275326dd4f53c419abbf27b8cd85daa6e1fc5e1d9cf105ee225e7/brkraw-0.5.7-py3-none-any.whl", hash = "sha256:24f72f87a5b2b2f24aacc51bb75b12d3b96f3f55337d27cdbf7aa97820717fed", size = 181045, upload-time = "2026-02-03T13:06:16.351Z" },
 ]
 
 [[package]]
@@ -113,7 +106,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "brkraw", specifier = ">=0.5.5" },
+    { name = "brkraw", git = "https://github.com/dvm-shlee/brkraw?tag=0.6.0rc2" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
     { name = "nibabel", specifier = ">=5.0" },
     { name = "pillow", specifier = ">=10.0" },
@@ -354,7 +347,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [

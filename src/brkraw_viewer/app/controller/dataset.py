@@ -1,10 +1,14 @@
 import logging
+import re
 from pathlib import Path
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast, Optional, List, Dict, Tuple
 
 from brkraw.core import layout as layout_core
 from brkraw import api as brkapi
+from brkraw.specs import context_map as context_map_core
+from brkraw.specs import remapper as remapper_core
+from brkraw.specs.context_map import output as context_map_output
 from .helper import format_value as _format_value
 
 if TYPE_CHECKING:
@@ -13,6 +17,18 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+
+def _flatten_values(values: dict, prefix: str = "") -> Dict[str, object]:
+    """{"bids": {"sub": "01"}} -> {"bids.sub": "01"} (nested mappings only)."""
+    flat: Dict[str, object] = {}
+    for key, value in values.items():
+        name = f"{prefix}{key}"
+        if isinstance(value, dict):
+            flat.update(_flatten_values(value, f"{name}."))
+        else:
+            flat[name] = value
+    return flat
 
 
 @dataclass(frozen=True)
@@ -150,6 +166,47 @@ class DatasetController:
     def loader(self) -> Optional[brkapi.BrukerLoader]:
         return self._loader
 
+    def _layout_parts(
+        self,
+        scan_id: int,
+        reco_id: Optional[int],
+        *,
+        info_spec: Optional[str] = None,
+        metadata_spec: Optional[str] = None,
+    ) -> Tuple[dict, dict]:
+        """Original (never remapped) info and metadata of a scan (brkraw 0.6 layout)."""
+        return layout_core.load_layout_info_parts(
+            self._loader,
+            scan_id,
+            root=None,
+            reco_id=reco_id,
+            override_info_spec=info_spec or None,
+            override_metadata_spec=metadata_spec or None,
+        )
+
+    @staticmethod
+    def context_map_meta(context_map: Optional[str]) -> dict:
+        """``__meta__`` of a context map file (0.6 format), or ``{}`` when there is none."""
+        if not context_map:
+            return {}
+        data = context_map_core.load_context_map(context_map)
+        meta = data.get("__meta__") if isinstance(data, dict) else None
+        return dict(meta) if isinstance(meta, dict) else {}
+
+    def _context_map_namespaces(
+        self,
+        info: dict,
+        scan_id: int,
+        reco_id: Optional[int],
+        context_map: Optional[str],
+    ) -> dict:
+        """Namespace values (``{"bids": {"sub": ...}}``) a 0.6 context map defines for one scan."""
+        if not context_map:
+            return {}
+        map_data = context_map_core.load_context_map(context_map)
+        plan = context_map_core.plan_scan(info, map_data, scan_id=scan_id, reco_id=reco_id)
+        return plan.namespaces
+
     def layout_info(
         self,
         scan_id: int,
@@ -161,15 +218,11 @@ class DatasetController:
     ) -> dict:
         if self._loader is None:
             return {}
-        return layout_core.load_layout_info(
-            self._loader,
-            scan_id,
-            context_map=context_map,
-            root=None,
-            reco_id=reco_id,
-            override_info_spec=info_spec or None,
-            override_metadata_spec=metadata_spec or None,
-        )
+        info, metadata = self._layout_parts(scan_id, reco_id, info_spec=info_spec, metadata_spec=metadata_spec)
+        merged = dict(info)
+        merged.update(metadata)
+        merged.update(self._context_map_namespaces(info, scan_id, reco_id, context_map))
+        return merged
 
     def render_layout(
         self,
@@ -184,15 +237,34 @@ class DatasetController:
         if self._loader is None:
             return ""
         template = base_name.strip() if isinstance(base_name, str) and base_name.strip() else layout_template
+        namespaces: dict = {}
+        if context_map:
+            info, _ = self._layout_parts(scan_id, reco_id)
+            namespaces = self._context_map_namespaces(info, scan_id, reco_id, context_map)
+            map_template = self.context_map_meta(context_map).get("layout_template")
+            if isinstance(map_template, str) and map_template.strip() and (template or "") == map_template.strip():
+                return self._render_map_template(map_template.strip(), info, namespaces, scan_id, reco_id)
         return layout_core.render_layout(
             self._loader,
             scan_id,
             layout_entries=layout_entries,
             layout_template=template or None,
-            context_map=context_map,
             root=None,
             reco_id=reco_id,
+            extra=namespaces or None,
         )
+
+    @staticmethod
+    def _render_map_template(template: str, info: dict, namespaces: dict, scan_id: int, reco_id: Optional[int]) -> str:
+        """Render a context map ``layout_template`` (``[ ]`` groups, ``utils.*`` tags) to a flat file name."""
+        values = _flatten_values(info)
+        values.setdefault("ScanID", scan_id)
+        values.setdefault("RecoID", reco_id)
+        values.update(_flatten_values(namespaces))
+        values.update(context_map_output.utils_values(counter=1))
+        text, _notes = context_map_output.render_template(template, values)
+        # the viewer writes flat files: path separators become underscores
+        return re.sub(r"[\\/]+", "_", text.strip())
 
     def render_slicepack_suffixes(self, info: dict, *, count: int, template: str) -> list[str]:
         return layout_core.render_slicepack_suffixes(info, count=count, template=template)
@@ -421,9 +493,9 @@ class DatasetController:
                 # Default info spec uses brkraw's scan.yaml (no spec_source).
                 base = brkapi.info_resolver.scan(scan, spec_source=None, validate=False)
                 if spec_path:
-                    spec, transforms = brkapi.addon.load_spec(spec_path, validate=False)
+                    spec, transforms = remapper_core.load_spec(spec_path, validate=False)
                     context = {"scan_id": scan_id, "reco_id": reco_id}
-                    override = brkapi.addon.map_parameters(scan, spec, transforms, context=context)
+                    override = remapper_core.map_parameters(scan, spec, transforms, context=context)
                     if isinstance(base, dict) and isinstance(override, dict):
                         merged = dict(base)
                         merged.update(override)
@@ -461,8 +533,8 @@ class DatasetController:
                 return {"error": f"get_metadata signature mismatch: {last_exc}", "category": category}
 
             # Fallback: best-effort mapping.
-            spec, transforms = brkapi.addon.load_spec(spec_path, validate=False)
+            spec, transforms = remapper_core.load_spec(spec_path, validate=False)
             context = {"scan_id": scan_id, "reco_id": reco_id}
-            return brkapi.addon.map_parameters(scan, spec, transforms, context=context)
+            return remapper_core.map_parameters(scan, spec, transforms, context=context)
         except Exception as exc:
             return {"error": str(exc), "category": category}

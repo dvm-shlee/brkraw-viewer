@@ -9,7 +9,7 @@ description = "BrkRaw scan viewer plugin for brkraw CLI."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-  "brkraw>=0.5.5",
+  "brkraw>=0.6.0rc2",
   "nibabel>=5.0",
   "pillow>=10.0",
   "ruamel.yaml>=0.17.0",
@@ -34,8 +34,12 @@ dev = [
 ]
 
 [tool.uv]
-# Keep the locked core on the 0.5 API until the viewer is adapted to 0.6.
-constraint-dependencies = ["brkraw<0.6"]
+# feat/brkraw-060-api only: lock brkraw to the fork's 0.6.0rc2 tag until 0.6.0 is
+# released. Before merging to main: delete this [tool.uv.sources] table and run
+# `uv lock` so uv.lock points at the released brkraw 0.6.0 on PyPI.
+
+[tool.uv.sources]
+brkraw = { git = "https://github.com/dvm-shlee/brkraw", tag = "0.6.0rc2" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -32,7 +32,6 @@ from ..workers.protocol import (
 )
 
 from brkraw import api as brkapi
-from brkraw.core import layout as layout_core
 from brkraw.api.types import SubjectType, SubjectPose, AffineSpace
 from brkraw_viewer.utils.orientation import reorient_to_ras
 from brkraw.api.types import (
@@ -561,22 +560,22 @@ class ViewerController:
             self.state.viewer.space,
             bool(self._viewer_hook_enabled),
         )
-        cycle_index = max(self.state.viewer.frame_index, 0)
-        cycle_count: Optional[int] = 1
+        frame_start = max(self.state.viewer.frame_index, 0)
+        frame_count: Optional[int] = 1
         if self._viewer_hook_enabled:
-            cycle_index = None
-            cycle_count = None
+            frame_start = None
+            frame_count = None
         else:
             cycle_frames = self._resolve_cycle_frames()
             if cycle_frames <= 1 or (
                 cycle_frames == self._viewer_slicepacks and self._viewer_frames <= 1
             ):
-                cycle_index = None
-                cycle_count = None
+                frame_start = None
+                frame_count = None
         self._pending_frame_requests = {}
-        if cycle_index is not None and cycle_count == 1 and not self._viewer_hook_enabled:
+        if frame_start is not None and frame_count == 1 and not self._viewer_hook_enabled:
             try:
-                self._pending_frame_requests[job_id] = int(cycle_index)
+                self._pending_frame_requests[job_id] = int(frame_start)
             except Exception:
                 pass
         req = LoadVolumeRequest(
@@ -584,8 +583,8 @@ class ViewerController:
             path=str(self.state.dataset.path),
             scan_id=int(sid),
             reco_id=int(rid),
-            cycle_index=cycle_index,
-            cycle_count=cycle_count,
+            frame_start=frame_start,
+            frame_count=frame_count,
             hook_name=self._viewer_hook_name if self._viewer_hook_enabled else None,
             hook_args=self._viewer_hook_args if self._viewer_hook_enabled else None,
             slicepack_index=self.state.viewer.slicepack_index,
@@ -657,8 +656,8 @@ class ViewerController:
             path=str(self.state.dataset.path),
             scan_id=int(sid),
             reco_id=int(rid),
-            cycle_index=None,
-            cycle_count=None,
+            frame_start=None,
+            frame_count=None,
             hook_name=None,
             hook_args=None,
             slicepack_index=self.state.viewer.slicepack_index,
@@ -916,20 +915,16 @@ class ViewerController:
         entries = None
 
         def _resolve_context_layout() -> tuple[str, Optional[list]]:
+            # brkraw 0.6 context maps carry only __meta__.layout_template (no layout_entries)
             if not context_map:
                 return "", None
             try:
-                meta = layout_core.load_layout_meta(context_map)
+                meta = self.dataset.context_map_meta(context_map)
             except Exception:
                 return "", None
-            map_template = meta.get("layout_template") if isinstance(meta, dict) else None
-            map_entries = None
-            if isinstance(meta, dict):
-                map_entries = meta.get("layout_entries") or meta.get("layout_fields")
+            map_template = meta.get("layout_template")
             if isinstance(map_template, str) and map_template.strip():
                 return map_template.strip(), None
-            if isinstance(map_entries, list) and map_entries:
-                return "", list(map_entries)
             return "", None
 
         if layout_auto:

@@ -35,8 +35,8 @@ class LoadVolumeRequest:
     path: str
     scan_id: int
     reco_id: int
-    cycle_index: Optional[int] = None
-    cycle_count: Optional[int] = None
+    frame_start: Optional[int] = None
+    frame_count: Optional[int] = None
     hook_name: Optional[str] = None
     hook_args: Optional[Dict[str, Any]] = None
     slicepack_index: int = 0

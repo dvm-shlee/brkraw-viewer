@@ -264,15 +264,49 @@ def _write_sidecar(path: Path, meta: dict, *, sidecar_format: str) -> None:
         sidecar.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
 
 
+def _frame_axis_number(scan: ScanLoader, reco_id: int) -> Optional[int]:
+    """Data-axis number of the last axis when the reco has a frame axis (index >= 3), else None.
+
+    The viewer reads one cycle volume at a time; the cycle axis is the last axis.
+    brkraw 0.6 takes the axis as a name or as this number (``get_dataobj(axis=, frames=)``).
+    """
+    shape_info = brkapi.shape_resolver.resolve(scan, reco_id=reco_id)
+    if not shape_info:
+        return None
+    _shape, shape_desc = brkapi.image_resolver.normalized_layout(shape_info)
+    return len(shape_desc) - 1 if len(shape_desc) > 3 else None
+
+
+def _read_frame_block(
+    scan: ScanLoader,
+    reco_id: int,
+    frame_start: Optional[int],
+    frame_count: Optional[int],
+    **data_kwargs: object,
+):
+    """Read ``frame_count`` frames from ``frame_start`` of the last (cycle) axis (None = to the end).
+
+    brkraw 0.6 selection: ``get_dataobj(axis=<last axis>, frames="start:stop")``. The
+    slice keeps the axis (size ``frame_count``), as the 0.5 ``cycle_index/cycle_count``
+    did. Returns None when the reco has no frame axis.
+    """
+    axis = _frame_axis_number(scan, reco_id)
+    if axis is None:
+        return None
+    start = int(frame_start or 0)
+    stop = "" if frame_count is None else str(start + int(frame_count))
+    return scan.get_dataobj(reco_id, axis=axis, frames=f"{start}:{stop}", **data_kwargs)
+
+
 def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.Queue) -> None:
     try:
         loader = _get_loader(task.path)
         logger.debug(
-            "Load volume: scan=%s reco=%s cycle_index=%s cycle_count=%s slicepack=%s space=%s",
+            "Load volume: scan=%s reco=%s frame_start=%s frame_count=%s slicepack=%s space=%s",
             task.scan_id,
             task.reco_id,
-            task.cycle_index,
-            task.cycle_count,
+            task.frame_start,
+            task.frame_count,
             task.slicepack_index,
             task.space,
         )
@@ -309,14 +343,11 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         data = None
         if num_cycles is not None and num_cycles > 1 and allow_cycle_slice:
             try:
-                data = scan.get_dataobj(
-                    task.reco_id,
-                    cycle_index=task.cycle_index,
-                    cycle_count=task.cycle_count or 1,
-                    **data_kwargs,
+                data = _read_frame_block(
+                    scan, task.reco_id, task.frame_start, task.frame_count or 1, **data_kwargs
                 )
             except ValueError as exc:
-                if "cycle axis mismatch" not in str(exc) and "cycle_index" not in str(exc):
+                if "split:" not in str(exc) and "cycle" not in str(exc):
                     raise
                 data = None
         if data is None:
@@ -421,7 +452,7 @@ def _process_timecourse_cache(task: TimecourseCacheRequest, output_queue: multip
         )
         loader = _get_loader(task.path)
         scan = _ensure_hook_state(loader, task.scan_id, enable_hook=False)
-        data = scan.get_dataobj(task.reco_id, cycle_index=0, cycle_count=None)
+        data = scan.get_dataobj(task.reco_id)
         if data is None:
             output_queue.put(
                 TimecourseCacheResult(

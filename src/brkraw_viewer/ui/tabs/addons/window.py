@@ -1195,45 +1195,25 @@ class AddonsTab:
             return
         current = handler(spec_category, spec_path)
         try:
-            from brkraw.specs import remapper as remapper_core
-            remapper_core.validate_context_map(Path(path))
-            map_data = remapper_core.load_context_map(path)
+            from brkraw.specs import context_map as context_map_core
+            context_map_core.validate_context_map(Path(path))
+            map_data = context_map_core.load_context_map(path)
         except Exception as exc:
             messagebox.showerror("Context Map", f"Context map validation failed:\n{exc}")
             return
         if not isinstance(current, Mapping):
             messagebox.showerror("Context Map", "Spec output is not a mapping.")
             return
-        target = spec_category
-        if target and not self._context_map_has_targets(map_data):
-            target = None
+        # 0.6 context maps: originals stay as they are; the map adds namespaces
+        # (info_spec) or sidecar fields (metadata_spec).
+        target = "metadata_spec" if spec_category == "metadata_spec" else "info_spec"
         try:
-            remapped = remapper_core.apply_context_map(current, map_data, target=target, context=None)
+            remapped = context_map_core.apply_context_map(current, map_data, target=target, context=None)
         except Exception as exc:
             messagebox.showerror("Context Map", f"Failed to apply context map:\n{exc}")
             return
         self._addon_context_status_var.set("applied")
         self.set_output(remapped)
-
-    def _context_map_has_targets(self, map_data: Any) -> bool:
-        if not isinstance(map_data, dict):
-            return False
-        for raw_rule in map_data.values():
-            if self._context_rule_targets(raw_rule):
-                return True
-        return False
-
-    def _context_rule_targets(self, raw_rule: Any) -> bool:
-        if isinstance(raw_rule, dict):
-            if isinstance(raw_rule.get("target"), str):
-                return True
-            cases = raw_rule.get("cases")
-            if isinstance(cases, list):
-                return any(self._context_rule_targets(case) for case in cases)
-            return False
-        if isinstance(raw_rule, list):
-            return any(self._context_rule_targets(item) for item in raw_rule)
-        return False
 
     def set_output(self, payload: Any) -> None:
         if self._info_output_text is None:

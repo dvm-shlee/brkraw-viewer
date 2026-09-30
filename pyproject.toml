@@ -29,6 +29,13 @@ docs = [
 test = [
   "pytest>=7.4",
 ]
+dev = [
+  "pytest>=7.4",
+]
+
+[tool.uv]
+# Keep the locked core on the 0.5 API until the viewer is adapted to 0.6.
+constraint-dependencies = ["brkraw<0.6"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

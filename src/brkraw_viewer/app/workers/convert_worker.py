@@ -55,7 +55,11 @@ def _get_loader(path: str) -> brkapi.BrukerLoader:
 
 def _ensure_hook_state(loader: brkapi.BrukerLoader, scan_id: int, *, enable_hook: bool) -> ScanLoader:
     scan = cast(ScanLoader, loader.get_scan(scan_id))
-    hook_enabled_state = getattr(scan, "_hook_enabled_state", None)
+    # Track hook state locally. Some ScanLoader implementations may not define
+    # `_hook_enabled_state` by default; always attempt to set it so that later
+    # "disable" requests can reliably reset the converter.
+    was_enabled = bool(getattr(scan, "_hook_enabled_state", False))
+    was_resolved = bool(getattr(scan, "_hook_resolved", False))
     if enable_hook:
         try:
             if not getattr(scan, "_hook_resolved", False):
@@ -67,13 +71,11 @@ def _ensure_hook_state(loader: brkapi.BrukerLoader, scan_id: int, *, enable_hook
         except Exception as exc:
             logger.warning("Hook resolve failed for scan %s: %s", scan_id, exc)
         try:
-            if hook_enabled_state is not None or hasattr(scan, "_hook_enabled_state"):
-                setattr(scan, "_hook_enabled_state", True)
+            setattr(scan, "_hook_enabled_state", True)
         except Exception:
             pass
     else:
-        was_enabled = bool(getattr(scan, "_hook_enabled_state", False))
-        if was_enabled:
+        if was_enabled or was_resolved:
             try:
                 loader.reset_converter(scan)
             except Exception:
@@ -83,8 +85,7 @@ def _ensure_hook_state(loader: brkapi.BrukerLoader, scan_id: int, *, enable_hook
             except Exception:
                 pass
         try:
-            if hook_enabled_state is not None or hasattr(scan, "_hook_enabled_state"):
-                setattr(scan, "_hook_enabled_state", False)
+            setattr(scan, "_hook_enabled_state", False)
         except Exception:
             pass
     return scan

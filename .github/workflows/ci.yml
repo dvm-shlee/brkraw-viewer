@@ -37,3 +37,33 @@ jobs:
       - name: Run tests
         run: |
           pytest -q
+
+  ecosystem-contract:
+    if: ${{ github.repository == 'BrkRaw/brkraw-viewer' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: viewer
+      - uses: actions/checkout@v4
+        with:
+          repository: BrkRaw/brkraw
+          path: core
+      - uses: actions/checkout@v4
+        with:
+          repository: BrkRaw/brkraw-hook
+          path: hook
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            core/pyproject.toml
+            viewer/pyproject.toml
+            hook/pyproject.toml
+      - name: Install current packages
+        run: python -m pip install ./core ./hook ./viewer pytest
+      - name: Check installed ecosystem contracts
+        env:
+          BRKRAW_ECOSYSTEM_CONTRACT: '1'
+        run: python -m pytest -q viewer/tests/test_ecosystem_installed.py

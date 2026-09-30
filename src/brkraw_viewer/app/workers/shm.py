@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import multiprocessing.shared_memory
 from multiprocessing import resource_tracker
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -27,3 +27,21 @@ def read_shared_array(name: str, shape: Tuple[int, ...], dtype: str) -> Tuple[np
     shm = multiprocessing.shared_memory.SharedMemory(name=name)
     arr = np.ndarray(shape, dtype=np.dtype(dtype), buffer=shm.buf)
     return arr, shm
+
+
+def release_shared_array(name: Optional[str]) -> None:
+    """Free a shared-memory block nobody will read (a stale or failed result). Never raises."""
+    if not name:
+        return
+    try:
+        shm = multiprocessing.shared_memory.SharedMemory(name=name)
+    except Exception:
+        return
+    try:
+        shm.close()
+    except Exception:
+        pass
+    try:
+        shm.unlink()
+    except Exception:
+        pass

@@ -29,6 +29,25 @@ from .shm import create_shared_array
 logger = logging.getLogger("brkraw.worker")
 _loader_cache: dict[str, brkapi.BrukerLoader] = {}
 
+# Per-reco constants (frame-axis number, affine) are computed once and reused for every
+# later frame (WI-0068: re-reading the JCAMP files cost ~0.52 s per frame).
+_UNSET = object()
+_meta_cache: dict[tuple, object] = {}
+# (path, scan_id, reco_id) of recos this worker already holds in memory.
+_held_recos: set[tuple] = set()
+
+
+def _memo(key: tuple, compute):
+    value = _meta_cache.get(key, _UNSET)
+    if value is _UNSET:
+        value = compute()
+        _meta_cache[key] = value
+    return value
+
+
+def _hook_key(hook_name: Optional[str], hook_args: Optional[dict]) -> tuple:
+    return (hook_name or "", json.dumps(hook_args or {}, sort_keys=True, default=repr))
+
 
 class _StreamToLogger:
     def __init__(self, log: logging.Logger, level: int) -> None:
@@ -282,20 +301,86 @@ def _read_frame_block(
     reco_id: int,
     frame_start: Optional[int],
     frame_count: Optional[int],
+    *,
+    frame_axis: object = _UNSET,
     **data_kwargs: object,
 ):
     """Read ``frame_count`` frames from ``frame_start`` of the last (cycle) axis (None = to the end).
 
     brkraw 0.6 selection: ``get_dataobj(axis=<last axis>, frames="start:stop")``. The
     slice keeps the axis (size ``frame_count``), as the 0.5 ``cycle_index/cycle_count``
-    did. Returns None when the reco has no frame axis.
+    did. Returns None when the reco has no frame axis. ``frame_axis`` is the already
+    resolved axis number (``None`` = no frame axis); omit it to resolve it here.
     """
-    axis = _frame_axis_number(scan, reco_id)
+    axis = _frame_axis_number(scan, reco_id) if frame_axis is _UNSET else frame_axis
     if axis is None:
         return None
     start = int(frame_start or 0)
     stop = "" if frame_count is None else str(start + int(frame_count))
     return scan.get_dataobj(reco_id, axis=axis, frames=f"{start}:{stop}", **data_kwargs)
+
+
+def _expected_nbytes(scan: ScanLoader, reco_id: int) -> Optional[int]:
+    """Size in bytes of the reco's 2dseq, from visu_pars only (no data read, ~0 ms).
+
+    ``prod(VisuCoreSize) * VisuCoreFrameCount * itemsize``. Returns None when any
+    of those cannot be read; the caller then does not ask.
+    """
+    try:
+        from brkraw.resolver import datatype
+
+        params = scan.avail[reco_id].file_visu_pars  # type: ignore[attr-defined]
+        size = params.get("VisuCoreSize")
+        frame_count = params.get("VisuCoreFrameCount")
+        word = params.get("VisuCoreWordType")
+        itemsize = np.dtype(datatype.WORDTYPE[word]).itemsize
+        return int(np.prod(np.asarray(size, dtype=np.int64))) * int(frame_count) * int(itemsize)
+    except Exception as exc:
+        logger.debug("Expected size unavailable for reco %s: %s", reco_id, exc)
+        return None
+
+
+def _affine_for_request(scan: ScanLoader, task: LoadVolumeRequest, hook_args: dict):
+    """Affine (list) for this request, computed once per (reco, space, flips, hook, slicepack)."""
+    key = (
+        "affine",
+        task.path,
+        task.scan_id,
+        task.reco_id,
+        task.space,
+        task.subject_type,
+        task.subject_pose,
+        bool(task.flip_x),
+        bool(task.flip_y),
+        bool(task.flip_z),
+        int(task.slicepack_index or 0),
+    ) + _hook_key(task.hook_name, hook_args)
+
+    def compute():
+        affine = _resolve_affine_for_space(
+            scan,
+            reco_id=task.reco_id,
+            space=task.space,
+            subject_type=task.subject_type,
+            subject_pose=task.subject_pose,
+            flip_x=task.flip_x,
+            flip_y=task.flip_y,
+            flip_z=task.flip_z,
+            hook_args=hook_args,
+        )
+        if isinstance(affine, tuple):
+            idx = int(task.slicepack_index or 0)
+            if idx < 0 or idx >= len(affine):
+                idx = 0
+            affine = affine[idx]
+        if affine is not None:
+            try:
+                affine = getattr(affine, "tolist", lambda: affine)()
+            except Exception:
+                pass
+        return affine
+
+    return _memo(key, compute)
 
 
 def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.Queue) -> None:
@@ -313,6 +398,23 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         enable_hook = bool(task.hook_name)
         scan = _ensure_hook_state(loader, task.scan_id, enable_hook=enable_hook)
         hook_args = task.hook_args or {}
+        reco_key = (task.path, task.scan_id, task.reco_id)
+        if task.memory_limit_bytes > 0 and not task.memory_confirmed and reco_key not in _held_recos:
+            expected = _memo(("nbytes",) + reco_key, lambda: _expected_nbytes(scan, task.reco_id))
+            if isinstance(expected, int) and expected > task.memory_limit_bytes:
+                logger.info("Load needs confirmation: %s bytes > limit %s", expected, task.memory_limit_bytes)
+                output_queue.put(
+                    LoadVolumeResult(
+                        job_id=task.job_id,
+                        shm_name=None,
+                        shape=(),
+                        dtype="",
+                        needs_confirm=True,
+                        estimated_bytes=expected,
+                        limit_bytes=task.memory_limit_bytes,
+                    )
+                )
+                return
         data_kwargs = _filter_hook_kwargs(scan.get_dataobj, hook_args)
         # flip_* are affine-only options; never pass them to get_dataobj.
         for key in ("flip_x", "flip_y", "flip_z"):
@@ -343,8 +445,17 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         data = None
         if num_cycles is not None and num_cycles > 1 and allow_cycle_slice:
             try:
+                frame_axis = _memo(
+                    ("axis",) + reco_key + _hook_key(task.hook_name, hook_args),
+                    lambda: _frame_axis_number(scan, task.reco_id),
+                )
                 data = _read_frame_block(
-                    scan, task.reco_id, task.frame_start, task.frame_count or 1, **data_kwargs
+                    scan,
+                    task.reco_id,
+                    task.frame_start,
+                    task.frame_count or 1,
+                    frame_axis=frame_axis,
+                    **data_kwargs,
                 )
             except ValueError as exc:
                 if "split:" not in str(exc) and "cycle" not in str(exc):
@@ -390,27 +501,8 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
             frames,
         )
         logger.debug("Load volume result: shape=%s slicepacks=%s frames=%s", getattr(data, "shape", None), slicepacks, frames)
-        affine = _resolve_affine_for_space(
-            scan,
-            reco_id=task.reco_id,
-            space=task.space,
-            subject_type=task.subject_type,
-            subject_pose=task.subject_pose,
-            flip_x=task.flip_x,
-            flip_y=task.flip_y,
-            flip_z=task.flip_z,
-            hook_args=hook_args,
-        )
-        if isinstance(affine, tuple):
-            idx = int(task.slicepack_index or 0)
-            if idx < 0 or idx >= len(affine):
-                idx = 0
-            affine = affine[idx]
-        if affine is not None:
-            try:
-                affine = getattr(affine, "tolist", lambda: affine)()
-            except Exception:
-                pass
+        affine = _affine_for_request(scan, task, hook_args)
+        _held_recos.add(reco_key)
         shm_name = create_shared_array(data)
         output_queue.put(
             LoadVolumeResult(
@@ -502,6 +594,9 @@ def _process_timecourse_cache(task: TimecourseCacheRequest, output_queue: multip
                 frames = int(data.shape[3])
         except Exception:
             frames = 1
+        # The re-oriented array is a permuted view; np.save of a non-contiguous view
+        # took 9.7 s for 298.6 MB, of a contiguous copy 0.6 s (WI-0011 table 3).
+        data = np.ascontiguousarray(data)
         cache_path = Path(task.cache_path)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         np.save(cache_path, data, allow_pickle=False)

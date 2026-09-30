@@ -455,6 +455,22 @@ class MainWindow(ttk.Frame):
         except Exception:
             pass
 
+    def confirm_large_load(self, estimated_mb: float, limit_mb: float) -> bool:
+        """Ask whether to load a scan whose data is over the memory limit (WI-0068)."""
+        try:
+            return bool(
+                messagebox.askyesno(
+                    "Large data",
+                    f"This scan is about {estimated_mb:,.0f} MB, over the {limit_mb:,.0f} MB limit "
+                    "(viewer.cache.memory_limit_mb).\n\n"
+                    "Loading keeps all of it in memory and needs several times that much while loading. "
+                    "Load it anyway?",
+                    parent=self.winfo_toplevel(),
+                )
+            )
+        except Exception:
+            return False
+
     def set_viewer_ranges(
         self,
         *,

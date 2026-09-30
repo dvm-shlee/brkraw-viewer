@@ -102,6 +102,10 @@ def test_volume_request_drops_hook_args_when_hook_disabled():
     controller._viewer_frames = 1
     controller._pending_frame_requests = {}
     controller._resolve_cycle_frames = lambda: 1
+    # memory-notice state added by WI-0068 (this test skips __init__)
+    controller._memory_limit_bytes = 0
+    controller._memory_confirmed = set()
+    controller._memory_declined = set()
 
     controller._viewer_hook_enabled = False
     controller._request_viewer_volume()

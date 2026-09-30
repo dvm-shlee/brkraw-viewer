@@ -20,6 +20,7 @@ from ..state import AppState
 from ..services.viewer_config import load_viewer_config
 from ..services.worker_manager import WorkerManager
 from ..services.registry import load_registry
+from ..workers.shm import release_shared_array
 from ..workers.protocol import (
     ConvertRequest,
     ConvertResult,
@@ -46,6 +47,42 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_MEMORY_LIMIT_MB = 1024
+
+
+def _memory_limit_bytes_from_config(cfg: dict) -> int:
+    """``viewer.cache.memory_limit_mb`` in bytes; 0 = never ask; bad values use the default."""
+    cache = cfg.get("cache", {}) if isinstance(cfg, dict) else {}
+    value = cache.get("memory_limit_mb", DEFAULT_MEMORY_LIMIT_MB) if isinstance(cache, dict) else DEFAULT_MEMORY_LIMIT_MB
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        value = DEFAULT_MEMORY_LIMIT_MB
+    return max(int(value * 1024 * 1024), 0)
+
+
+def _stat_stamp(path: Path) -> str:
+    st = path.stat()
+    return f"{st.st_mtime_ns}:{st.st_size}"
+
+
+def _source_stamp(path: Optional[Path], scan_id: Optional[int], reco_id: Optional[int]) -> str:
+    """Change time and size of the data the timecourse cache was built from.
+
+    Zip/archive: the file itself. Folder: the reco's 2dseq and visu_pars (falls back to
+    the folder). Missing files give ``"none"`` so the key still works.
+    """
+    if path is None:
+        return "none"
+    p = Path(path)
+    try:
+        if p.is_file():
+            return _stat_stamp(p)
+        reco_dir = p / str(scan_id) / "pdata" / str(reco_id)
+        parts = [_stat_stamp(f) for f in (reco_dir / "2dseq", reco_dir / "visu_pars") if f.exists()]
+        return "|".join(parts) if parts else _stat_stamp(p)
+    except OSError:
+        return "none"
+
+
 class ViewerController:
     def __init__(self, *, dataset: Optional[DatasetController] = None) -> None:
         self.state = AppState()
@@ -60,6 +97,10 @@ class ViewerController:
             on_registry_result=self._on_registry_result,
         )
         self._popups: dict[str, TaskPopup] = {}
+        self._memory_limit_bytes = _memory_limit_bytes_from_config(cfg)
+        # (path, scan, reco) the user chose to load / not to load although over the limit.
+        self._memory_confirmed: set[tuple] = set()
+        self._memory_declined: set[tuple] = set()
         self._registry_jobs: dict[str, str] = {}
         self._viewer_volume: Optional[object] = None
         self._viewer_raw_volume: Optional[object] = None
@@ -155,7 +196,12 @@ class ViewerController:
             if self._view is not None:
                 self._view.set_status(f"Load failed: {result.error}")
             return
+        if result.needs_confirm:
+            self._on_large_load_notice(result)
+            return
         if self._viewer_job_id and result.job_id != self._viewer_job_id:
+            # Nobody will read this result: free its shared memory (WI-0068).
+            release_shared_array(result.shm_name)
             return
         if result.shm_name is None:
             if self._view is not None:
@@ -172,6 +218,7 @@ class ViewerController:
             except Exception:
                 pass
         except Exception as exc:
+            release_shared_array(result.shm_name)
             if self._view is not None:
                 self._view.set_status(f"Load failed: {exc}")
             return
@@ -236,6 +283,49 @@ class ViewerController:
         if self._view is not None:
             self._view.set_viewer_controls_enabled(True)
             self._view.set_status("Volume loaded.")
+
+    def _memory_key(self) -> tuple:
+        return (
+            str(self.state.dataset.path),
+            self.state.dataset.selected_scan_id,
+            self.state.dataset.selected_reco_id,
+        )
+
+    def _forget_memory_choices(self) -> None:
+        self._memory_confirmed.clear()
+        self._memory_declined.clear()
+
+    def _on_large_load_notice(self, result: LoadVolumeResult) -> None:
+        """The worker did not load: the expected size is over the limit. Ask, then go on or stop."""
+        if self._viewer_job_id and result.job_id != self._viewer_job_id:
+            return
+        estimated_mb = float(result.estimated_bytes or 0) / (1024 * 1024)
+        limit_mb = float(result.limit_bytes or 0) / (1024 * 1024)
+        key = self._memory_key()
+        ask = getattr(self._view, "confirm_large_load", None)
+        proceed = False
+        if callable(ask):
+            try:
+                proceed = bool(ask(estimated_mb, limit_mb))
+            except Exception:
+                proceed = False
+        if proceed:
+            self._memory_confirmed.add(key)
+            self._memory_declined.discard(key)
+            self._request_viewer_volume()
+            return
+        self._memory_declined.add(key)
+        if self._view is not None:
+            self._view.set_status(
+                f"Load cancelled: about {estimated_mb:.0f} MB is over the {limit_mb:.0f} MB limit "
+                "(select the scan again to be asked again)."
+            )
+
+    def _memory_request_fields(self) -> dict:
+        return {
+            "memory_limit_bytes": self._memory_limit_bytes,
+            "memory_confirmed": self._memory_key() in self._memory_confirmed,
+        }
 
     def _on_timecourse_cache_result(self, result: TimecourseCacheResult) -> None:
         if self._timecourse_cache_job_id and result.job_id != self._timecourse_cache_job_id:
@@ -549,6 +639,8 @@ class ViewerController:
         rid = self.state.dataset.selected_reco_id
         if sid is None or rid is None:
             return
+        if self._memory_key() in self._memory_declined:
+            return
         job_id = f"viewer-load-{dt.datetime.now().timestamp()}"
         self._viewer_job_id = job_id
         logger.debug(
@@ -594,6 +686,7 @@ class ViewerController:
             flip_x=self.state.viewer.flip_x,
             flip_y=self.state.viewer.flip_y,
             flip_z=self.state.viewer.flip_z,
+            **self._memory_request_fields(),
         )
         self._worker.submit(req)
         if self._view is not None:
@@ -649,6 +742,8 @@ class ViewerController:
         rid = self.state.dataset.selected_reco_id
         if sid is None or rid is None:
             return
+        if self._memory_key() in self._memory_declined:
+            return
         job_id = f"viewer-full-{dt.datetime.now().timestamp()}"
         self._viewer_job_id = job_id
         req = LoadVolumeRequest(
@@ -667,6 +762,7 @@ class ViewerController:
             flip_x=self.state.viewer.flip_x,
             flip_y=self.state.viewer.flip_y,
             flip_z=self.state.viewer.flip_z,
+            **self._memory_request_fields(),
         )
         self._worker.submit(req)
         if self._view is not None:
@@ -719,6 +815,12 @@ class ViewerController:
             str(int(self.state.viewer.flip_y)),
             str(int(self.state.viewer.flip_z)),
             str(int(self.state.viewer.slicepack_index)),
+            # a changed source file must not reuse an old cache file (WI-0068)
+            _source_stamp(
+                self.state.dataset.path,
+                self.state.dataset.selected_scan_id,
+                self.state.dataset.selected_reco_id,
+            ),
         ]
         key = hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()
         return str(base / f"{key}.npy")
@@ -986,6 +1088,7 @@ class ViewerController:
     def action_open_dataset(self, path: Path) -> None:
         logger.debug("Open dataset: %s", path)
         summary = self.dataset.open_dataset(path)
+        self._forget_memory_choices()
         self._reset_viewer_hook_state()
         self._clear_timecourse_cache()
         self._clear_frame_cache()
@@ -1031,6 +1134,7 @@ class ViewerController:
         logger.debug("Select scan: %s", scan_id)
         self.state.dataset.selected_scan_id = int(scan_id)
         self.state.dataset.selected_reco_id = None
+        self._memory_declined.clear()
         self._reset_viewer_hook_state()
         self._clear_timecourse_cache()
         self._clear_viewer_volume(status="No image loaded.")
@@ -1053,6 +1157,7 @@ class ViewerController:
     def action_select_reco(self, reco_id: int) -> None:
         logger.debug("Select reco: %s", reco_id)
         self.state.dataset.selected_reco_id = int(reco_id)
+        self._memory_declined.clear()
         self._reset_viewer_hook_state()
         self._clear_timecourse_cache()
         self._clear_frame_cache()
@@ -1102,6 +1207,7 @@ class ViewerController:
 
         cfg = load_viewer_config()
         self.state.settings.worker_popup = bool(cfg.get("worker", {}).get("popup", True))
+        self._memory_limit_bytes = _memory_limit_bytes_from_config(cfg)
 
         if current_path:
             try:

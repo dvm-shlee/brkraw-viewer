@@ -46,6 +46,10 @@ class LoadVolumeRequest:
     flip_x: bool = False
     flip_y: bool = False
     flip_z: bool = False
+    # Ask before loading a reco whose 2dseq is larger than this (0 = never ask, WI-0068).
+    memory_limit_bytes: int = 0
+    # The user already chose "continue" for this reco.
+    memory_confirmed: bool = False
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,10 @@ class LoadVolumeResult:
     slicepacks: int = 1
     frames: int = 1
     error: Optional[str] = None
+    # Nothing was loaded: the expected size is over the limit and the user must choose.
+    needs_confirm: bool = False
+    estimated_bytes: Optional[int] = None
+    limit_bytes: int = 0
 
 
 @dataclass(frozen=True)

@@ -27,8 +27,9 @@ def _default_registry_columns() -> List[Dict[str, Any]]:
 def default_viewer_config() -> Dict[str, Any]:
     return {
         "cache": {
-            "enabled": False,
-            "max_items": 10,
+            # Ask before loading a scan whose 2dseq is larger than this many MB; 0 = never ask.
+            # Provisional default (WI-0068, D-0093): the final value is set in 1c.
+            "memory_limit_mb": 1024,
         },
         "registry": {
             "path": "viewer/registry.jsonl",

@@ -22,3 +22,7 @@ site/
 dev/
 !docs/dev/
 !docs/dev/**
+
+# Local AI agent guidance (not version controlled)
+AGENTS.md
+CLAUDE.md

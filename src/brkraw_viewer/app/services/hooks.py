@@ -12,12 +12,8 @@ HOOK_GROUP = "brkraw.viewer.hook"
 
 class ViewerHook(Protocol):
     name: str
-    priority: int
 
     def build_tab(self, parent: Any, app: Any) -> Optional[Any]:
-        ...
-
-    def on_dataset_loaded(self, app: Any) -> None:
         ...
 
 

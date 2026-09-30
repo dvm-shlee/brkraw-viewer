@@ -587,7 +587,7 @@ class ViewerController:
             cycle_index=cycle_index,
             cycle_count=cycle_count,
             hook_name=self._viewer_hook_name if self._viewer_hook_enabled else None,
-            hook_args=self._viewer_hook_args,
+            hook_args=self._viewer_hook_args if self._viewer_hook_enabled else None,
             slicepack_index=self.state.viewer.slicepack_index,
             space=self.state.viewer.space,
             subject_type=self.state.viewer.subject_type if self.state.viewer.space == "subject_ras" else None,

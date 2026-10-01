@@ -13,7 +13,10 @@ scan summary panel for quick checks.
 - The **Info**, **Metadata** and **Hook** tabs each have a **Rule** section: the
   rule file and rule name, and a status line. With **Auto** checked the rule is
   selected from the scan; clear it to choose a file (**Browse**) and a name by
-  hand. **New** and **Edit** create or edit a rule file in a text window.
+  hand. **New** and **Edit** create or edit a rule file in a text window. Each file
+  (and each rule category) has one editor window: pressing **Edit** again brings the
+  open window forward instead of opening another. If **Save** fails, an error message
+  names the file and the reason.
 - The **Info** and **Metadata** tabs also have a **Spec** section: choose an
   installed spec or a file, optionally follow the spec chosen by the applied rule,
   and press **Apply Spec**. The **Hook** tab lists the available converter hook.

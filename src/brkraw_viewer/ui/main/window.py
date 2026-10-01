@@ -455,6 +455,12 @@ class MainWindow(ttk.Frame):
         except Exception:
             pass
 
+    def notify_warning(self, title: str, message: str) -> None:
+        try:
+            messagebox.showwarning(title, message, parent=self.winfo_toplevel())
+        except Exception:
+            pass
+
     def confirm_large_load(self, estimated_mb: float, limit_mb: float) -> bool:
         """Ask whether to load a scan whose data is over the memory limit (WI-0068)."""
         try:

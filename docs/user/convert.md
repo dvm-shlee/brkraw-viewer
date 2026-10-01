@@ -30,4 +30,9 @@ reports how many files were saved, or the error.
   switches it on for the conversion and **Edit Options** edits its options.
 
 **Preview Outputs** shows the output paths before conversion runs; **Convert** runs it.
+While a conversion of a scan is queued or running, pressing **Convert** again for the
+same scan, or for any conversion that would write the same output file, is refused with
+a notice and does not queue a second job; a conversion of another scan is accepted and
+runs after the first. The same scan can be converted again once the first has finished
+(or failed).
 The memory notice of the Viewer tab does not apply to Convert.

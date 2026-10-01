@@ -43,6 +43,9 @@ class WorkerManager:
     def log_queue(self) -> multiprocessing.Queue:
         return self._log_queue
 
+    def is_alive(self) -> bool:
+        return self._worker is not None and self._worker.is_alive()
+
     def start(self) -> None:
         if self._worker is not None and self._worker.is_alive():
             return

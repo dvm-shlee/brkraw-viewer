@@ -97,6 +97,8 @@ class ViewerController:
             on_registry_result=self._on_registry_result,
         )
         self._popups: dict[str, TaskPopup] = {}
+        # job_id -> (dataset path, scan, reco, output paths) of conversions queued or running (WI-0079).
+        self._convert_pending: dict[str, tuple] = {}
         self._memory_limit_bytes = _memory_limit_bytes_from_config(cfg)
         # (path, scan, reco) the user chose to load / not to load although over the limit.
         self._memory_confirmed: set[tuple] = set()
@@ -154,6 +156,11 @@ class ViewerController:
         return self._worker.log_queue
 
     def _on_convert_result(self, result: ConvertResult) -> None:
+        if result.job_id:
+            self._convert_pending.pop(result.job_id, None)
+        else:
+            # The worker loop failed without knowing which job; do not keep Convert blocked.
+            self._convert_pending.clear()
         popup = self._popups.pop(result.job_id, None)
         if popup is not None and hasattr(popup, "finish"):
             try:
@@ -410,8 +417,38 @@ class ViewerController:
                 self._view.registry_set_status("Registry updated")
         self._view.registry_refresh()
 
-    def start_convert(self, request: ConvertRequest) -> None:
+    def start_convert(self, request: ConvertRequest) -> bool:
+        """Queue a conversion unless the same one is already queued or running (WI-0079).
+
+        The same request means the same dataset, scan and reco, or any output file that a queued
+        conversion is about to write. A conversion of another scan is not blocked. Returns whether
+        the request was queued.
+        """
+        alive = getattr(self._worker, "is_alive", None)
+        if self._convert_pending and callable(alive) and not alive():
+            # The worker process is gone, so no result will ever clear these.
+            self._convert_pending.clear()
+        outputs = frozenset(request.output_paths)
+        for pending in self._convert_pending.values():
+            same_target = pending[:3] == (request.path, request.scan_id, request.reco_id)
+            if same_target or outputs & pending[3]:
+                message = (
+                    f"Convert of scan {request.scan_id} (reco {request.reco_id}) is already queued or running. "
+                    "Wait for it to finish."
+                )
+                logger.info("Convert refused, already pending: %s", request.job_id)
+                if self._view is not None:
+                    self._view.set_status(message)
+                    notify = getattr(self._view, "notify_warning", None)
+                    if callable(notify):
+                        try:
+                            notify("Convert", message)
+                        except Exception:
+                            pass
+                return False
+        self._convert_pending[request.job_id] = (request.path, request.scan_id, request.reco_id, outputs)
         self._worker.submit(request)
+        return True
 
     def _update_params_summary(self) -> None:
         if self._view is None:

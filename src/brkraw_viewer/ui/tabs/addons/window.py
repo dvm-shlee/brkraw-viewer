@@ -59,6 +59,9 @@ class AddonsTab:
         except Exception:
             pass
 
+        # One editor window per target file (and rule category), so a later Save cannot overwrite
+        # the changes of an earlier window (WI-0079).
+        self._editor_windows: Dict[tuple, Any] = {}
         self._addon_rule_sections: Dict[str, Dict[str, Any]] = {}
         self._addon_spec_sections: Dict[str, Dict[str, Any]] = {}
         self._addon_context_map_var = tk.StringVar(value="")
@@ -946,8 +949,37 @@ class AddonsTab:
             return
         self._open_text_editor(path=Path(path), title="Edit spec")
 
+    @staticmethod
+    def _editor_key(path: Path, category: Optional[str] = None) -> tuple:
+        try:
+            resolved = str(Path(path).resolve())
+        except Exception:
+            resolved = str(path)
+        return (resolved, category)
+
+    def _show_existing_editor(self, key: tuple) -> bool:
+        """Bring the open editor window of ``key`` forward. Returns False when there is none."""
+        win = self._editor_windows.get(key)
+        if win is None:
+            return False
+        try:
+            if not win.winfo_exists():
+                self._editor_windows.pop(key, None)
+                return False
+            win.deiconify()
+            win.lift()
+            win.focus_force()
+        except Exception:
+            self._editor_windows.pop(key, None)
+            return False
+        return True
+
     def _open_text_editor(self, *, path: Path, title: str) -> None:
+        key = self._editor_key(path)
+        if self._show_existing_editor(key):
+            return
         win = tk.Toplevel(self.frame)
+        self._editor_windows[key] = win
         win.title(title)
         win.geometry("640x480")
         win.columnconfigure(0, weight=1)
@@ -978,12 +1010,16 @@ class AddonsTab:
         def _save() -> None:
             try:
                 path.write_text(text.get("1.0", tk.END), encoding="utf-8")
-            except Exception:
-                pass
+            except Exception as exc:
+                messagebox.showerror("Editor", f"Failed to save:\n{path}\n{exc}")
         ttk.Button(actions, text="Save", command=_save).grid(row=0, column=1, sticky="e")
 
     def _open_rule_section_editor(self, *, path: Path, category: str) -> None:
+        key = self._editor_key(path, category)
+        if self._show_existing_editor(key):
+            return
         win = tk.Toplevel(self.frame)
+        self._editor_windows[key] = win
         win.title(f"Edit rule ({category})")
         win.geometry("720x520")
         win.columnconfigure(0, weight=1)

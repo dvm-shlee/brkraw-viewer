@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Any
 
-from brkraw_viewer.ui.windows.hook_options import HookOptionsDialog
+from brkraw_viewer.ui.windows.hook_options import HookOptionsDialog, show_hook_options
 
 class ConvertTab:
     TITLE = "Convert"
@@ -565,13 +565,13 @@ class ConvertTab:
             if callable(handler):
                 handler(hook_name, self._hook_args)
 
-        self._hook_options_dialog = HookOptionsDialog(
+        show_hook_options(
+            self,
             self.frame,
             hook_name=hook_name,
             hook_args=self._hook_args,
             on_apply=_apply,
         )
-        self._hook_options_dialog.show()
 
     def _on_convert(self) -> None:
         handler = getattr(self._cb, "on_convert_submit", None)

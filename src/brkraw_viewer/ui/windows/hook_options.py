@@ -237,9 +237,30 @@ class HookOptionsDialog:
         self._on_apply = on_apply
         self._window: Optional[tk.Toplevel] = None
         self._container: Optional[ttk.Frame] = None
+        self._header_label: Optional[ttk.Label] = None
         self._vars: Dict[str, tk.StringVar] = {}
         self._defaults: Dict[str, Any] = {}
         self._choices: Dict[str, Dict[str, Any]] = {}
+
+    def is_open(self) -> bool:
+        """True while the window exists (shown or withdrawn); a destroyed window is not open."""
+        win = self._window
+        if win is None:
+            return False
+        try:
+            return bool(win.winfo_exists())
+        except Exception:
+            return False
+
+    def update(self, *, hook_name: str, hook_args: Optional[dict], on_apply) -> None:
+        """Point an existing window at the current hook, applied values and apply callback (WI-0078)."""
+        if hook_name != self._hook_name:
+            self._defaults = {}
+        self._hook_name = hook_name
+        self._hook_args = hook_args or {}
+        self._on_apply = on_apply
+        # Show what is applied now, not what was typed and left unapplied earlier.
+        self._vars = {}
 
     def show(self) -> None:
         if not self._hook_name:
@@ -256,6 +277,11 @@ class HookOptionsDialog:
         if self._window is None or not self._window.winfo_exists():
             win = tk.Toplevel(self._parent)
             win.title("Converter Hook Options")
+            try:
+                # Stay above the viewer window so a second press is not needed to find it.
+                win.transient(self._parent.winfo_toplevel())
+            except Exception:
+                pass
             win.resizable(True, True)
             win.columnconfigure(0, weight=1)
             win.rowconfigure(0, weight=1)
@@ -269,7 +295,8 @@ class HookOptionsDialog:
             header.grid(row=0, column=0, sticky="ew", pady=(0, 6))
             header.columnconfigure(1, weight=1)
             ttk.Label(header, text="Hook").grid(row=0, column=0, sticky="w")
-            ttk.Label(header, text=self._hook_name).grid(row=0, column=1, sticky="w")
+            self._header_label = ttk.Label(header, text=self._hook_name)
+            self._header_label.grid(row=0, column=1, sticky="w")
 
             self._container = ttk.Frame(container)
             self._container.grid(row=1, column=0, sticky="nsew")
@@ -285,6 +312,11 @@ class HookOptionsDialog:
 
             self._window = win
 
+        if self._header_label is not None:
+            try:
+                self._header_label.configure(text=self._hook_name)
+            except Exception:
+                pass
         self._render_form(preset, hints)
         if self._window is not None:
             self._window.deiconify()
@@ -365,6 +397,7 @@ class HookOptionsDialog:
                 continue
             default = self._defaults.get(key)
             values[key] = coerce_hook_value(var.get(), default)
+        self._hook_args = dict(values)
         if callable(self._on_apply):
             self._on_apply(values)
 
@@ -374,3 +407,20 @@ class HookOptionsDialog:
                 self._window.withdraw()
             except Exception:
                 pass
+
+
+def show_hook_options(owner: Any, parent: tk.Misc, *, hook_name: str, hook_args: Optional[dict], on_apply) -> HookOptionsDialog:
+    """Open the hook options window for ``owner`` (a tab or panel), never a second one.
+
+    The window is kept on ``owner._hook_options_dialog``. Pressing the button again brings the
+    existing window forward (or shows it again after Close); a window closed with the window
+    button is created anew. WI-0078: each press used to create a new window.
+    """
+    dialog = getattr(owner, "_hook_options_dialog", None)
+    if dialog is not None and dialog.is_open():
+        dialog.update(hook_name=hook_name, hook_args=hook_args, on_apply=on_apply)
+    else:
+        dialog = HookOptionsDialog(parent, hook_name=hook_name, hook_args=hook_args, on_apply=on_apply)
+        owner._hook_options_dialog = dialog
+    dialog.show()
+    return dialog

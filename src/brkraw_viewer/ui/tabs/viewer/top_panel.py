@@ -3,7 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from brkraw_viewer.ui.windows.hook_options import HookOptionsDialog
+from brkraw_viewer.ui.windows.hook_options import show_hook_options
 
 
 class ViewerTopPanel(ttk.Frame):
@@ -270,8 +270,7 @@ class ViewerTopPanel(ttk.Frame):
             fallback = getattr(callbacks, "on_viewer_hook_args_change", None)
             if callable(fallback):
                 fallback(values)
-        dialog = HookOptionsDialog(self, hook_name=hook_name, hook_args=self._hook_args, on_apply=_apply)
-        dialog.show()
+        show_hook_options(self, self, hook_name=hook_name, hook_args=self._hook_args, on_apply=_apply)
 
     def _on_crosshair(self, callbacks) -> None:
         handler = getattr(callbacks, "on_viewer_crosshair_toggle", None)

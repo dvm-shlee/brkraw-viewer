@@ -2117,7 +2117,9 @@ class ViewerController:
             self._view.set_convert_hook_state(
                 self._viewer_hook_name or "None",
                 self._convert_hook_enabled and bool(self._viewer_hook_name),
-                self._viewer_hook_args,
+                # The options applied in the Convert tab live in the by-name store (WI-0078);
+                # `_viewer_hook_args` would put the viewer's older options back.
+                self._hook_args_by_name.get(self._viewer_hook_name or "", self._viewer_hook_args),
             )
 
     def on_convert_use_viewer_orientation_change(self, use_viewer: bool) -> None:

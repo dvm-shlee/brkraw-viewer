@@ -443,7 +443,11 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         if num_cycles is not None and num_cycles > 1:
             allow_cycle_slice = True
         data = None
-        if num_cycles is not None and num_cycles > 1 and allow_cycle_slice:
+        # frame_start and frame_count both None = all frames (what the viewer sends when a
+        # converter hook is on, and the slider then only redraws, WI-0077). Never turn that
+        # into one frame: a hook such as sordino honours ``frames=``.
+        want_all_frames = task.frame_start is None and task.frame_count is None
+        if num_cycles is not None and num_cycles > 1 and allow_cycle_slice and not want_all_frames:
             try:
                 frame_axis = _memo(
                     ("axis",) + reco_key + _hook_key(task.hook_name, hook_args),
@@ -453,7 +457,7 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
                     scan,
                     task.reco_id,
                     task.frame_start,
-                    task.frame_count or 1,
+                    task.frame_count,
                     frame_axis=frame_axis,
                     **data_kwargs,
                 )

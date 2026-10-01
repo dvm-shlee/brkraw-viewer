@@ -250,7 +250,10 @@ def test_result_of_an_older_apply_is_dropped(controller):
 
 def test_convert_options_survive_the_convert_hook_checkbox(controller):
     shown = []
-    controller._view = SimpleNamespace(set_convert_hook_state=lambda name, enabled, args: shown.append((name, enabled, args)))
+    controller._view = SimpleNamespace(
+        set_convert_hook_state=lambda name, enabled, args: shown.append((name, enabled, args)),
+        set_viewer_hook_state=lambda *a, **k: None,  # WI-0088: a Convert Apply also updates the Viewer tab
+    )
     controller.on_convert_hook_options_apply("sordino", {"ignore_samples": 4})
     controller.on_convert_hook_toggle(False)
     controller.on_convert_hook_toggle(True)

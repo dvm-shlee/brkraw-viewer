@@ -27,7 +27,10 @@ reports how many files were saved, or the error.
   set in the Viewer tab; when it is off, the Space, Subject Type, Pose and Flip
   X/Y/Z controls here are used.
 - **Converter hook**: when a hook is selected for the scan by the rules, a checkbox
-  switches it on for the conversion and **Edit Options** edits its options.
+  switches it on for the conversion and **Edit Options** edits its options. The options
+  are shared with the Viewer tab's **Hook Options**: they are kept once per hook, so
+  **Apply** in either tab changes them for both (the Viewer tab reloads its image when its
+  hook is on).
 
 **Preview Outputs** shows the output paths before conversion runs; **Convert** runs it.
 While a conversion of a scan is queued or running, pressing **Convert** again for the

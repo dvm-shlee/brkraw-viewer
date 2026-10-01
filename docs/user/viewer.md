@@ -64,7 +64,9 @@ another slice, and there is no window/level control (see
   that frame, and its capture button saves the plot as PNG.
 - **Hook**: when a converter hook is selected for the scan by the rules, **Apply**
   displays the data as that hook returns it, and **Hook Options** edits the hook
-  options. This is the converter hook of the scan, not a viewer extension.
+  options. This is the converter hook of the scan, not a viewer extension. The options are
+  shared with the Convert tab's hook options (kept once per hook): **Apply** in either tab
+  changes them for both.
 
 The status line under the views shows space, hook, zoom, RGB, crosshair and slicepack.
 Tabs can be detached into their own window and re-attached from the right-click menu on

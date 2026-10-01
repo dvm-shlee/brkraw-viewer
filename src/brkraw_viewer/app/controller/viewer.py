@@ -1839,14 +1839,10 @@ class ViewerController:
             self._request_viewer_volume()
 
     def on_convert_hook_options_apply(self, hook_name: str, hook_args: Optional[dict]) -> None:
-        name = (hook_name or "").strip()
-        if not name:
-            return
-        logger.debug("Convert hook options apply: %s", name)
-        self._hook_args_by_name[name] = dict(hook_args or {})
-        convert_enabled = self._convert_hook_enabled and bool(self._viewer_hook_name)
-        if self._view is not None:
-            self._view.set_convert_hook_state(self._viewer_hook_name or "None", convert_enabled, self._hook_args_by_name.get(name))
+        # Hook options are kept once per hook name and shared by the Viewer and Convert tabs (WI-0088):
+        # an Apply in either tab updates both and, with the Viewer hook on, reloads the shown result.
+        logger.debug("Convert hook options apply: %s", (hook_name or "").strip())
+        self.on_hook_options_apply(hook_name, hook_args)
 
     def on_viewer_hook_lock(self, locked: bool) -> None:
         self._viewer_hook_locked = bool(locked)

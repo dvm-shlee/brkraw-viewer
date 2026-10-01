@@ -25,7 +25,11 @@ def load_viewer_hooks() -> List[Any]:
         except Exception as exc:
             logger.warning("Failed to load viewer hook %s: %s", ep.name, exc)
             continue
-        hook = loaded() if callable(loaded) else loaded
+        try:
+            hook = loaded() if callable(loaded) else loaded
+        except Exception as exc:
+            logger.warning("Failed to create viewer hook %s: %s", ep.name, exc)
+            continue
         if hook is None:
             continue
         hooks.append(hook)

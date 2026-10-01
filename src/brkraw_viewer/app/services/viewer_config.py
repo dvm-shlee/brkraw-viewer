@@ -42,6 +42,25 @@ def default_viewer_config() -> Dict[str, Any]:
     }
 
 
+def resolve_cache_dir() -> Path:
+    """Folder named by ``viewer.cache.path``; ``cache`` in the config folder when empty.
+
+    Relative paths are taken from the BrkRaw config folder. The exit prompt and the
+    Timecourse temporary files both use this one folder (WI-0076).
+    """
+    root = resolve_root(None)
+    try:
+        data = config_core.load_config(root=None) or {}
+        value = (data.get("viewer") or {}).get("cache", {}).get("path")
+    except Exception as exc:
+        logger.warning("Could not read viewer.cache.path: %s", exc)
+        value = None
+    if isinstance(value, str) and value.strip():
+        path = Path(value.strip()).expanduser()
+        return path if path.is_absolute() else root / path
+    return root / "cache"
+
+
 def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
     merged = dict(base)
     for key, value in updates.items():

@@ -17,7 +17,7 @@ from .helper import (
 from .dataset import DatasetController
 from ..protocols import ViewerView, TaskPopup
 from ..state import AppState
-from ..services.viewer_config import load_viewer_config
+from ..services.viewer_config import load_viewer_config, resolve_cache_dir
 from ..services.worker_manager import WorkerManager
 from ..services.registry import load_registry
 from ..workers.shm import release_shared_array
@@ -797,7 +797,7 @@ class ViewerController:
             )
 
     def _resolve_timecourse_cache_path(self) -> str:
-        base = Path.home() / ".brkraw" / "cache" / "viewer"
+        base = resolve_cache_dir() / "viewer"
         try:
             base.mkdir(parents=True, exist_ok=True)
         except Exception:
@@ -1248,18 +1248,7 @@ class ViewerController:
 
             from brkraw.core import cache as cache_core
 
-            config = brkapi.config.load_config(root=None) or {}
-            cache_cfg = config.get("viewer", {}).get("cache", {})
-            cache_path_str = cache_cfg.get("path")
-
-            cache_path = None
-            if isinstance(cache_path_str, str) and cache_path_str.strip():
-                cache_path = Path(cache_path_str)
-                if not cache_path.is_absolute():
-                    cache_path = brkapi.config.resolve_root(None) / cache_path
-
-            if cache_path is None:
-                cache_path = brkapi.config.resolve_root(None) / "cache"
+            cache_path = resolve_cache_dir()
 
             info = cache_core.get_info(path=cache_path)
             total_size = info.get("size", 0) or 0

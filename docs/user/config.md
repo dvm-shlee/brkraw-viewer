@@ -67,12 +67,12 @@ are still in an existing `config.yaml`.
 ## Disk cache
 
 For multi-frame data, the Timecourse window writes a temporary `.npy` file of the whole
-series under `~/.brkraw/cache/viewer`. The viewer removes it when you close the Timecourse
-window or select another scan or dataset, and builds a new one when the source file
-changes. When you close the viewer, it checks the folder given by `viewer.cache.path`
-(relative paths are taken from the BrkRaw config folder; `cache` there when the setting
-is empty) and, if it holds files, asks whether to clear it. The Timecourse file location
-is fixed and does not follow `viewer.cache.path`.
+series in the `viewer` subfolder of the folder given by `viewer.cache.path` (relative paths
+are taken from the BrkRaw config folder; `cache` there when the setting is empty). The viewer
+removes it when you close the Timecourse window or select another scan or dataset, and builds
+a new one when the source file changes. When you close the viewer, it checks the same
+`viewer.cache.path` folder and, if it holds files, asks whether to clear it, so the
+Timecourse files are included.
 
 For one-off external registry files, use CLI output override:
 

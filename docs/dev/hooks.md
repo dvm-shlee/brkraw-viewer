@@ -25,8 +25,9 @@ and `build_tab(parent, app)`. `build_tab` must return a Tk widget or `None`;
 any other return value is refused with a warning. An exception raised by
 `build_tab` is logged as a warning and does not stop the viewer, and an entry
 point that fails to import is skipped with a warning. An entry point that is a
-class is instantiated without arguments, and the host does not catch an error
-raised there, so keep `__init__` simple. Other attributes, for example `priority`,
+class is instantiated without arguments; if that raises, the host logs a warning
+with the hook name and the reason, skips that hook only, and still loads the others
+and the Extensions tab. Other attributes, for example `priority`,
 are not read, and hooks are listed in the Extensions tab sorted by name.
 
 ```python

@@ -45,8 +45,9 @@ The Viewer tab makes it easy to confirm the right scan and orientation before
 running a larger workflow.
 
 **Registry**
-The Registry reduces repeated filesystem navigation and lets you re-open the
-current session with a single menu action.
+The Registry reduces repeated filesystem navigation. It keeps a list of
+datasets (a JSONL file) that you can open again from one window, and you can
+add the dataset that is currently open from its `+` menu.
 
 **Extensions/hooks**
 Extensions allow modality-specific panels (MRS, BIDS, etc.) to live outside the
@@ -93,9 +94,14 @@ implemented interface and entry point setup.
 
 ## Installation
 
+The viewer needs Python 3.9 or newer and `brkraw` 0.6.0rc2 or newer (the
+`brkraw` 0.6 API; older `brkraw` releases are not supported by this version).
 For development and testing, install in editable mode:
 
     pip install -e .
+
+The repository includes a `uv.lock`; `uv sync --locked --extra dev` creates a
+development environment and `uv run --locked --extra dev pytest` runs the tests.
 
 ---
 
@@ -105,11 +111,16 @@ Launch the viewer via the BrkRaw CLI:
 
     brkraw viewer /path/to/bruker/study
 
-Optional arguments allow opening a specific scan or slice:
+Optional arguments select the initial scan and reconstruction, or an info spec
+for the Addons tab:
 
     brkraw viewer /path/to/bruker/study \
         --scan 3 \
-        --reco 1
+        --reco 1 \
+        --info-spec ./my-info-spec.yaml
+
+When no path, scan or reco is given, the environment variables `BRKRAW_PATH`,
+`BRKRAW_SCAN_ID` and `BRKRAW_RECO_ID` are used if they are set.
 
 Use an external registry file (instead of `~/.brkraw/config.yaml` registry path):
 
@@ -119,26 +130,55 @@ Write registry entries directly to an external JSONL file:
 
     brkraw viewer-registry add /path/to/bruker/study -t ./shared-registry
 
+`brkraw viewer-registry` also accepts `init`, `rm`, `scan` (find datasets under a
+folder), `list` and `clear`. The environment variable
+`BRKRAW_VIEWER_REGISTRY_PATH` overrides the registry file as well.
+
 The viewer can also open `.zip` or Paravision-exported `.PvDatasets`
 archives using `Load` (folder or archive file).
 
 ---
 
-## Update
+## Current features
 
-Recent updates:
+- Load a study folder, a `.zip` archive or a Paravision-exported `.PvDatasets`
+  archive; browse scans and reconstructions in the left list; open the Study
+  Info window.
+- Viewer tab: three orthogonal views (X-Z, X-Y, Z-Y) with click-to-set position,
+  mouse-wheel slicing, `Shift`+wheel zoom (1x to 4x), optional crosshair, PNG
+  capture, `Space` selection (`raw`, `scanner`, `subject_ras`) with subject
+  type/pose and per-axis flips, frame, slicepack and extra-dimension sliders
+  that appear only when the data has them, an RGB mode for three-channel data,
+  a voxel value box that opens a timecourse plot for multi-frame data, and an
+  `Apply` switch for the converter hook that the rules select for the scan.
+- Addons tab: rule, spec and context map selection (installed or from a file)
+  for info, metadata and converter hook, with resolved output.
+- Params tab: summary of the selected scan and a searchable table of `acqp`,
+  `method`, `reco` and `visu_pars` parameters.
+- Convert tab: NIfTI export with the BrkRaw layout engine (GUI template, context
+  map or config template), a layout key browser, optional JSON/YAML metadata
+  sidecar, converter hook options, and an option to reuse the Viewer
+  orientation. Work runs in a separate worker process.
+- Registry window: add the current session, a folder or an archive; remove
+  entries; open an entry.
+- Extensions tab: pick a viewer hook found through `brkraw.viewer.hook`.
+- Config tab: edit, back up and reset the BrkRaw `config.yaml` in the app.
+- Memory notice: before the Viewer tab loads a scan, the viewer estimates the
+  size of its `2dseq` from `visu_pars` and asks first when it is larger than
+  `viewer.cache.memory_limit_mb` (default 600 MB). See `docs/user/config.md`.
 
-- Open folders or archives (`.zip` / `.PvDatasets`)
-- Viewer: `Space` (`raw/scanner/subject_ras`), nibabel RAS display, click-to-set `X/Y/Z`, optional crosshair + zoom,
-  slicepack/frame sliders only when needed
-- Info: rule + spec selection (installed or file), parameter search, lazy Viewer refresh on tab focus
-- Registry: add the current session from the `+` menu when a dataset is loaded
-- Convert: BrkRaw layout engine, template + suffix defaults from `~/.brkraw/config.yaml`, keys browser (click to add),
-  optional config `layout_entries`
-- Config: edit `~/.brkraw/config.yaml` in-app; basic focus/icon UX
+## Known limitations
 
-This update keeps dependencies minimal and preserves compatibility with
-the core BrkRaw rule/spec/hook system.
+- The Viewer tab shows a single image volume. Layer composition, ROI statistics
+  and label editing are planned and are not available in this version.
+- Brightness is scaled for each displayed slice (1st to 99th percentile of that
+  slice), so brightness changes when you move through slices, and there is no
+  window/level control.
+- The worker process keeps the whole `2dseq` of the selected scan in memory so
+  that changing the frame is fast. It also keeps the loader of every dataset
+  opened earlier until the viewer is closed.
+- Viewer hooks add a panel in the Extensions tab; there is no supported way for a
+  hook to draw on the Viewer tab (see `docs/dev/hooks.md`).
 
 ---
 

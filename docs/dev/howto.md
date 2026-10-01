@@ -8,6 +8,9 @@
 1. 공식 인터페이스만으로 `Viewer` 탭의 기존 viewport를 직접 제어하는 API는 없습니다.
 2. 안정적으로 개발하려면 `Extensions` 탭 안에서 자체 viewport(`ViewportCanvas`)를 만들고 제어하는 방식이 권장됩니다.
 
+1~5절은 현재 코드 기준입니다. 6절은 아직 구현되지 않은 설계 제안(초안)이며, 현재 버전에는 `app.viewer_api`도
+`on_viewer_ready`/`on_viewer_invalidated` 호출도 없습니다.
+
 ## 1) 현재 hook이 할 수 있는 범위
 
 `brkraw.viewer.hook` entry point로 로드된 hook은 기본적으로 `build_tab(parent, app)`로
@@ -98,7 +101,8 @@ class MyExtensionPanel(ttk.Frame):
 
 코어 Viewer 자체를 건드리지 않고, 데이터 레벨에서 hook을 적용해 결과를 Viewer로 보여주는 방식입니다.
 
-- viewer hook 옵션(= `hook_args`)으로 `scan.get_dataobj(...)` 동작을 바꿔서 volume 값을 변환
+- scan에 맞는 converter hook의 옵션(= `hook_args`, Viewer 탭 Hook 상자의 `Hook Options`)으로 `scan.get_dataobj(...)` 동작을 바꿔서 volume 값을 변환
+  (Viewer 탭의 `Hook`은 viewer hook이 아니라 converter hook을 적용합니다)
 - 필요하면 RGB 형태 데이터(마지막 축 3채널)를 반환해서 Viewer의 RGB 모드로 표시
 
 주의:
@@ -145,7 +149,6 @@ from tkinter import ttk
 
 class MyViewerHook:
     name = "my-extension"
-    priority = 0
 
     def build_tab(self, parent, app):
         frame = ttk.Frame(parent)
@@ -175,7 +178,8 @@ my-extension = "my_pkg.viewer_hook:MyViewerHook"
 ## 6) 공식 API 추가 설계 제안 (Draft)
 
 이 섹션은 `Viewer` 탭 viewport를 extension/hook에서 안전하게 제어할 수 있도록
-"공식 API"를 추가하는 제안입니다.
+"공식 API"를 추가하는 제안입니다. **계획 단계이며 현재 버전에는 구현되어 있지 않습니다**
+(아래 `viewer_api`, `on_viewer_ready`, `on_viewer_invalidated`는 코드에 없습니다).
 
 ### 6-1. 목표
 

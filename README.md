@@ -94,7 +94,7 @@ implemented interface and entry point setup.
 
 ## Installation
 
-The viewer needs Python 3.9 or newer and `brkraw` 0.6.0rc2 or newer (the
+The viewer needs Python 3.9 or newer and `brkraw` 0.6.1rc1 or newer (the
 `brkraw` 0.6 API; older `brkraw` releases are not supported by this version).
 For development and testing, install in editable mode:
 

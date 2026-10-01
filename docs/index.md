@@ -17,7 +17,7 @@ modality-specific panels.
 - Convert datasets to NIfTI with configurable naming/layout
 - Optional extensions via `brkraw.viewer.hook` entry points (no core edits required)
 
-The viewer requires `brkraw` 0.6.0rc2 or newer. It shows one image volume at a
+The viewer requires `brkraw` 0.6.1rc1 or newer. It shows one image volume at a
 time; layer composition, ROI statistics and label editing are planned and not
 available yet. See the [Viewer](user/viewer.md) page for the controls and known
 limitations.

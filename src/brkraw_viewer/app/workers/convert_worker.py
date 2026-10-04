@@ -680,6 +680,41 @@ def _timecourse_view(scan: ScanLoader, task: TimecourseRequest) -> np.ndarray:
     return view
 
 
+def _roi_timecourse(task: TimecourseRequest, view: np.ndarray) -> TimecourseResult:
+    """Per-frame mean over a 2D mask on one display slice (C6 4D statistics, C9 in the worker).
+
+    Reads only the masked voxels of that slice (mask voxels x frames), never the volume.
+    NaN or infinite values are left out per frame; a frame with none left gives NaN.
+    """
+    axis = int(task.roi_axis if task.roi_axis is not None else 2)
+    if axis not in (0, 1, 2):
+        raise ValueError(f"roi_axis must be 0, 1 or 2, got {axis}")
+    index = int(task.roi_index)
+    if not 0 <= index < view.shape[axis]:
+        raise ValueError(f"roi_index {index} is outside the data {view.shape[:3]}")
+    mask = np.asarray(task.roi_mask, dtype=bool)
+    cut: list = [slice(None)] * view.ndim
+    cut[axis] = index
+    plane = view[tuple(cut)]  # (a, b, frames); basic slicing is a view (np.take would copy)
+    if mask.shape != plane.shape[:2]:
+        raise ValueError(f"roi_mask shape {mask.shape} does not match the slice {plane.shape[:2]}")
+    picked = np.asarray(plane[mask], dtype=np.float64)  # (n_mask, frames): only the ROI
+    finite = np.isfinite(picked)
+    counts = finite.sum(axis=0)
+    sums = np.where(finite, picked, 0.0).sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        means = np.where(counts > 0, sums / np.maximum(counts, 1), np.nan)
+    return TimecourseResult(
+        job_id=task.job_id,
+        values=[float(v) for v in means],
+        index=tuple(task.index),
+        frames=int(view.shape[3]),
+        error=None,
+        n_mask=int(mask.sum()),
+        n_per_frame=[int(c) for c in counts],
+    )
+
+
 def _process_timecourse(task: TimecourseRequest, output_queue: multiprocessing.Queue) -> None:
     """One voxel's values over the frames, from the held array (C9: no file, no full copy)."""
     try:
@@ -691,6 +726,12 @@ def _process_timecourse(task: TimecourseRequest, output_queue: multiprocessing.Q
         _held_scans[reco_key] = scan
         if view.ndim < 4:
             raise ValueError("Timecourse requires 4D data.")
+        while view.ndim > 4:  # axes after the 4th: the requested index, as for a voxel
+            extra = task.extra_indices[view.ndim - 5] if (view.ndim - 5) < len(task.extra_indices) else 0
+            view = view[..., min(max(int(extra), 0), view.shape[-1] - 1)]
+        if task.roi_mask is not None:
+            output_queue.put(_roi_timecourse(task, view))
+            return
         xi, yi, zi = (int(v) for v in task.index)
         for axis, value in enumerate((xi, yi, zi)):
             if not 0 <= value < view.shape[axis]:

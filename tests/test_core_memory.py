@@ -258,3 +258,40 @@ def test_timecourse_reads_one_voxel_without_copying_the_volume(monkeypatch):
     assert out.items[-1].values == data[32 - 1 - 9, 18, 9, :].astype(float).tolist()  # x flipped
     assert peak < 0.05 * data.nbytes, (peak, data.nbytes)
     assert convert_worker._held_recos[("p", 1, 1)] == data.nbytes
+
+
+def test_roi_over_time_is_the_per_frame_mean_inside_the_mask_from_the_held_data(monkeypatch):
+    from brkraw_viewer.core.roi import ellipse_mask
+    from brkraw_viewer.utils.orientation import reorient_to_ras
+
+    data = np.random.default_rng(2).standard_normal((24, 20, 12, 30)).astype(np.float32)  # 0.7 MB
+    data[5, 6, 4, 3] = np.nan
+    swap = np.array([[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=float)
+    scan = SimpleNamespace(get_dataobj=lambda reco_id, **kw: data, image_info={1: {"dataobj": data}})
+    monkeypatch.setattr(convert_worker, "_get_loader", lambda path: object())
+    monkeypatch.setattr(convert_worker, "_ensure_hook_state", lambda loader, sid, enable_hook: scan)
+    monkeypatch.setattr(convert_worker, "_resolve_affine_for_space", lambda _s, **k: swap)
+    view, _ = reorient_to_ras(data, swap)  # display grid (20, 24, 12, 30)
+    mask = ellipse_mask(view.shape[:2], 6, 5, 3.5, 2.5)  # on display slice z = 4
+    out = _Queue()
+    req = TimecourseRequest(job_id="roi", path="p", scan_id=1, reco_id=1, roi_axis=2, roi_index=4, roi_mask=mask)
+    convert_worker._process_timecourse(req, out)  # first call reads and holds the data
+    gc.collect()
+    tracemalloc.start()
+    try:
+        tracemalloc.reset_peak()
+        start = tracemalloc.get_traced_memory()[0]
+        convert_worker._process_timecourse(req, out)
+        peak = tracemalloc.get_traced_memory()[1] - start
+    finally:
+        tracemalloc.stop()
+    res = out.items[-1]
+    assert res.error is None and res.frames == 30 and res.n_mask == int(mask.sum())
+    picked = view[:, :, 4, :][mask].astype(np.float64)  # (n_mask, frames)
+    expect = np.nanmean(picked, axis=0)
+    np.testing.assert_allclose(res.values, expect, rtol=1e-12)
+    assert res.n_per_frame[3] == int(mask.sum()) - int(np.isnan(picked[:, 3]).sum())
+    assert peak < 0.05 * data.nbytes, (peak, data.nbytes)
+    bad = TimecourseRequest(job_id="bad", path="p", scan_id=1, reco_id=1, roi_axis=2, roi_index=4, roi_mask=np.ones((3, 3), bool))
+    convert_worker._process_timecourse(bad, out)
+    assert out.items[-1].values is None and "roi_mask shape" in out.items[-1].error

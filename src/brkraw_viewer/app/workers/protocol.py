@@ -94,6 +94,12 @@ class TimecourseRequest:
     flip_x: bool = False
     flip_y: bool = False
     flip_z: bool = False
+    # ROI over time (contract C6/C9): when roi_mask is given, the answer is the per-frame
+    # mean of the finite values inside this 2D mask on display slice roi_index of roi_axis
+    # (mask laid out like np.take(volume, roi_index, roi_axis)); ``index`` is then unused.
+    roi_axis: Optional[int] = None
+    roi_index: int = 0
+    roi_mask: Optional[Any] = None
 
 
 @dataclass(frozen=True)
@@ -103,6 +109,9 @@ class TimecourseResult:
     index: Tuple[int, int, int] = (0, 0, 0)
     frames: int = 1
     error: Optional[str] = None
+    # ROI answers: voxels in the mask, and per frame how many of them were finite.
+    n_mask: int = 0
+    n_per_frame: Optional[List[int]] = None
 
 
 @dataclass(frozen=True)

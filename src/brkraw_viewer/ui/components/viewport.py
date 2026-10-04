@@ -9,7 +9,7 @@ from typing import Callable, Optional, Tuple, Dict, List
 import numpy as np
 from PIL import Image, ImageTk, ImageDraw
 
-from ...core.composite import window_to_index
+from ...core.composite import composite_over, window_to_index
 from ...core.window import default_window, normalize_window
 from ..assets import load_icon
 from .icon_button import IconButton
@@ -196,6 +196,9 @@ class ViewportCanvas(ttk.Frame):
         # Display window (vmin, vmax) of the base, computed by the caller once per frame
         # (layer core C5). None falls back to the slice's own 1-99 percentiles.
         self._last_window: Optional[Tuple[float, float]] = None
+        # Layers drawn over the base, bottom to top: (rgb float (H, W, 3), alpha (H, W)) from
+        # the layer core (C4), already sampled on this slice by the controller (C3).
+        self._last_layers: List[Tuple[np.ndarray, np.ndarray]] = []
         self._show_crosshair: bool = False
         self._crosshair_rc: Optional[Tuple[int, int]] = None
         self._show_colorbar: bool = False
@@ -261,6 +264,7 @@ class ViewportCanvas(ttk.Frame):
             base = np.abs(base)
 
         base_rgb = self._base_to_rgb(base, self._last_window)
+        base_rgb = self._composite_layers(base_rgb, self._last_layers)
         if self._last_overlay is not None:
             base_rgb = self._apply_overlay(base_rgb, self._last_overlay)
 
@@ -516,12 +520,14 @@ class ViewportCanvas(ttk.Frame):
         allow_overflow: bool = False,
         zoom_scale: Optional[float] = None,
         window: Optional[Tuple[float, float]] = None,
+        layers: Optional[List[Tuple[np.ndarray, np.ndarray]]] = None,
     ) -> None:
         self._last_base = np.asarray(base)
         self._last_title = str(title)
         self._last_res = (float(res[0]), float(res[1]))
         self._last_overlay = overlay
         self._last_window = normalize_window(window)
+        self._last_layers = list(layers or [])
         self._crosshair_rc = crosshair
         self._focus_rc = focus_rc
         self._use_cursor_focus = bool(use_cursor_focus)
@@ -553,6 +559,7 @@ class ViewportCanvas(ttk.Frame):
     def clear(self) -> None:
         self._last_base = None
         self._last_overlay = None
+        self._last_layers = []
         self._canvas.delete("all")
         self._tk_img = None
         self._img_id = None
@@ -755,8 +762,9 @@ class ViewportCanvas(ttk.Frame):
         if np.iscomplexobj(base):
             base = np.abs(base)
 
-        # Render base -> RGB uint8
+        # Render base -> RGB uint8, then the layers over it (C4)
         base_rgb = self._base_to_rgb(base, self._last_window)
+        base_rgb = self._composite_layers(base_rgb, self._last_layers)
 
         # Apply overlay if present -> RGB uint8
         if self._last_overlay is not None:
@@ -929,6 +937,16 @@ class ViewportCanvas(ttk.Frame):
             win = default_window(img)
         u8 = window_to_index(img, win[0], win[1])
         return np.stack([u8, u8, u8], axis=2)
+
+    @staticmethod
+    def _composite_layers(base_rgb: np.ndarray, layers: List[Tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
+        """Straight-alpha "over" of the layers on the base (C4); a layer whose shape does not
+        match this slice is skipped rather than drawn misaligned."""
+        h, w = base_rgb.shape[0], base_rgb.shape[1]
+        usable = [(rgb, a) for rgb, a in layers if np.shape(rgb) == (h, w, 3) and np.shape(a) == (h, w)]
+        if not usable:
+            return base_rgb
+        return composite_over(base_rgb, usable)
 
     def _apply_overlay(self, base_rgb: np.ndarray, ov: OverlaySpec) -> np.ndarray:
         h, w = base_rgb.shape[0], base_rgb.shape[1]

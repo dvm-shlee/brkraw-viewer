@@ -341,8 +341,10 @@ class ViewerRightPanel(ttk.Frame):
         overflow_blend: float | None = None,
         zoom_scale: float | None = None,
         window: tuple[float, float] | None = None,
+        layers: dict | None = None,
     ) -> None:
         self._last_indices = indices
+        layers = layers or {}
         if not views:
             self._xz.clear()
             self._xy.clear()
@@ -375,6 +377,7 @@ class ViewerRightPanel(ttk.Frame):
                 allow_overflow=allow_overflow,
                 zoom_scale=zoom_scale,
                 window=window,
+                layers=layers.get("xz"),
             )
         if "xy" in views:
             self._xy.set_view(
@@ -389,6 +392,7 @@ class ViewerRightPanel(ttk.Frame):
                 allow_overflow=allow_overflow,
                 zoom_scale=zoom_scale,
                 window=window,
+                layers=layers.get("xy"),
             )
         if "zy" in views:
             self._zy.set_view(
@@ -403,6 +407,7 @@ class ViewerRightPanel(ttk.Frame):
                 allow_overflow=allow_overflow,
                 zoom_scale=zoom_scale,
                 window=window,
+                layers=layers.get("zy"),
             )
         self._last_zoom_source = None
 

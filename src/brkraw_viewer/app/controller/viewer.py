@@ -34,7 +34,10 @@ from ..workers.protocol import (
 
 from brkraw import api as brkapi
 from brkraw.api.types import SubjectType, SubjectPose, AffineSpace
-from brkraw_viewer.utils.orientation import reorient_to_ras
+from brkraw_viewer.utils.orientation import reorient_to_ras, ras_display_affine
+from brkraw_viewer.core.composite import label_rgba, layer_rgba
+from brkraw_viewer.core.layers import Layer, LayerStack
+from brkraw_viewer.core.resample import Grid, grid_matrix, sample_slice
 from brkraw_viewer.core.window import default_window
 from brkraw.api.types import (
     SubjectType,
@@ -87,6 +90,13 @@ class ViewerController:
         # computed from; reset when the volume object changes.
         self._viewer_windows: dict[tuple, tuple[float, float]] = {}
         self._viewer_windows_source: Optional[Callable[[], object]] = None
+        # Layer core C1-C4 (WI-0072): index 0 is the shown scan on the display grid D;
+        # other layers are drawn over it, resampled per shown slice. Arrays given in this
+        # process (source "array") are held here; the Python handle that adds them is stage 4.
+        self._layers = LayerStack()
+        self._layer_data: dict[str, np.ndarray] = {}
+        self._layer_windows: dict[tuple, tuple[float, float]] = {}
+        self._layer_label_colors: dict[str, dict[int, tuple[int, int, int]]] = {}
         self._viewer_res: tuple[float, float, float] = (1.0, 1.0, 1.0)
         self._viewer_fov: Optional[tuple[float, float, float]] = None
         self._viewer_job_id: Optional[str] = None
@@ -493,6 +503,184 @@ class ViewerController:
                 self._viewer_windows[key] = window
         return window
 
+    # ---- layer core C1-C4 (WI-0072) --------------------------------------------------------
+
+    def _display_grid(self) -> Optional[Grid]:
+        """Display grid D of the shown scan: its shape after reorientation and ``A_D`` (C1)."""
+        vol = self._viewer_volume
+        if vol is None:
+            return None
+        shape = tuple(int(n) for n in np.shape(vol)[:3])
+        if len(shape) < 3:
+            return None
+        affine = np.eye(4)
+        if self._viewer_raw_affine is not None:
+            raw_shape = np.shape(self._viewer_raw_volume)[:3] if self._viewer_raw_volume is not None else shape
+            try:
+                raw_affine = np.asarray(self._viewer_raw_affine, dtype=float)
+            except Exception:
+                raw_affine = np.eye(4)
+            try:
+                affine = ras_display_affine(raw_affine, raw_shape)
+            except Exception:
+                affine = raw_affine  # the volume was shown unreoriented in that case too
+        try:
+            return Grid(shape, affine, str(self.state.viewer.space))
+        except ValueError:
+            return None
+
+    def _sync_base_layer(self, grid: Grid) -> None:
+        """Keep layer 0 equal to the shown scan; layers in another space are dropped (C1)."""
+        base = self._layers.base
+        if (
+            base is not None
+            and base.space == grid.space
+            and tuple(base.shape[:3]) == grid.shape
+            and np.allclose(base.affine, grid.affine, rtol=0.0, atol=1e-9)
+        ):
+            return
+        others = [self._layers.get(i) for i in self._layers.ids()[1:]]
+        for lay in reversed(others):
+            self._layers.remove(lay.id)
+        if base is not None:
+            self._layers.remove(base.id)
+        vol = np.asarray(self._viewer_volume)
+        frames = max(int(vol.shape[3]) if vol.ndim >= 4 else 1, int(self._viewer_frames or 1))
+        self._layers.add(
+            Layer(
+                id="base",
+                name="scan",
+                kind="image",
+                source="scan",
+                space=grid.space,
+                shape=grid.shape + ((frames,) if frames > 1 else ()),
+                affine=grid.affine,
+                dtype=str(vol.dtype),
+                frames=frames,
+                nbytes=int(vol.nbytes),
+            )
+        )
+        dropped = []
+        for lay in others:
+            if lay.space == grid.space:
+                self._layers.add(lay)
+            else:
+                self._drop_layer_data(lay.id)
+                dropped.append(lay.name)
+        if dropped and self._view is not None:
+            self._view.set_status(f"Removed layer(s) in another space: {', '.join(dropped)}")
+
+    def _add_array_layer(
+        self,
+        data: np.ndarray,
+        affine: np.ndarray,
+        *,
+        name: str,
+        kind: str = "image",
+        space: Optional[str] = None,
+        layer_id: Optional[str] = None,
+        **fields: object,
+    ) -> str:
+        """Add an array held by this process as a layer over the shown scan.
+
+        Internal for now: the stage-4 Python handle will offer it. The array must be in
+        the shown scan's coordinate space (no silent conversion, C1).
+        """
+        arr = np.asarray(data)
+        if arr.ndim < 3:
+            raise ValueError(f"a layer needs at least 3 dimensions, got {arr.shape}")
+        base = self._layers.base
+        if base is None:
+            raise ValueError("load a scan before adding layers")
+        lid = layer_id or f"layer-{len(self._layers)}"
+        while lid in self._layers.ids():
+            lid += "+"
+        frames = int(arr.shape[3]) if arr.ndim >= 4 else 1
+        layer = Layer(
+            id=lid,
+            name=name,
+            kind=kind,
+            source="array",
+            space=space or base.space,
+            shape=arr.shape,
+            affine=affine,
+            dtype=str(arr.dtype),
+            frames=frames,
+            nbytes=int(arr.nbytes),
+            **fields,  # type: ignore[arg-type]
+        )
+        self._layers.add(layer)
+        self._layer_data[lid] = arr
+        self._render_viewer_views()
+        return lid
+
+    def _remove_layer(self, layer_id: str) -> None:
+        self._layers.remove(layer_id)
+        self._drop_layer_data(layer_id)
+        self._render_viewer_views()
+
+    def _drop_layer_data(self, layer_id: str) -> None:
+        self._layer_data.pop(layer_id, None)
+        self._layer_label_colors.pop(layer_id, None)
+        for key in [k for k in self._layer_windows if k[0] == layer_id]:
+            self._layer_windows.pop(key, None)
+
+    def _layer_window(self, layer: Layer, frame: int, vol3d: np.ndarray) -> tuple[float, float]:
+        if layer.window is not None:
+            return layer.window  # the user's window always wins (C5)
+        key = (layer.id, int(frame))
+        window = self._layer_windows.get(key)
+        if window is None:
+            window = default_window(vol3d)
+            self._layer_windows[key] = window
+        return window
+
+    def _label_colors(self, layer: Layer, vol: np.ndarray) -> dict[int, tuple[int, int, int]]:
+        colors = self._layer_label_colors.get(layer.id)
+        if colors is None:
+            ids = [int(v) for v in np.unique(vol) if int(v) != 0]
+            colors = {v: _LABEL_PALETTE[(v - 1) % len(_LABEL_PALETTE)] for v in ids}
+            self._layer_label_colors[layer.id] = colors
+        return colors
+
+    def _layer_planes(self, grid: Grid, indices: tuple[int, int, int], base_frame: int) -> dict[str, list]:
+        """Colour and alpha of every visible non-base layer on the three shown slices.
+
+        Only the shown slices are sampled (C3); the result lines up with the base views
+        (``xy`` = (y, x), ``xz`` = (z, x), ``zy`` = (y, z)).
+        """
+        out: dict[str, list] = {"xy": [], "xz": [], "zy": []}
+        xi, yi, zi = indices
+        for layer in list(self._layers)[1:]:
+            if not layer.visible or layer.alpha <= 0.0:
+                continue
+            data = self._layer_data.get(layer.id)
+            if data is None:
+                continue
+            frame = self._layers.frame_for(layer.id, base_frame)
+            vol3d = data[:, :, :, frame] if data.ndim >= 4 else data
+            while vol3d.ndim > 3:
+                vol3d = vol3d[..., 0]
+            matrix = grid_matrix(grid, Grid(tuple(vol3d.shape[:3]), layer.affine, layer.space))
+            for plane, axis, index, transpose in (("xy", 2, zi, True), ("xz", 1, yi, True), ("zy", 0, xi, False)):
+                values = sample_slice(vol3d, matrix, grid.shape, axis, index, interpolation=layer.interpolation)
+                if transpose:
+                    values = values.T
+                if layer.kind == "label":
+                    rgb, a = label_rgba(values, colors=self._label_colors(layer, data), alpha=layer.alpha)
+                else:
+                    vmin, vmax = self._layer_window(layer, frame, vol3d)
+                    rgb, a = layer_rgba(
+                        values,
+                        lut=_lut(layer.cmap),
+                        vmin=vmin,
+                        vmax=vmax,
+                        alpha=layer.alpha,
+                        rules=layer.transparency,
+                    )
+                out[plane].append((rgb, a))
+        return out
+
     def _render_viewer_views(self) -> None:
         if self._view is None:
             return
@@ -602,6 +790,19 @@ class ViewerController:
                 overflow_blend = base_blend * ratio_scale
             except Exception:
                 overflow_blend = 0.0
+        # Layers over the scan (C1-C4): layer 0 follows the shown scan; others are sampled
+        # on the shown slices only. A failure here must not hide the scan itself.
+        layer_views: Optional[dict] = None
+        if not (rgb_eligible and self.state.viewer.rgb_mode):
+            try:
+                grid = self._display_grid()
+                if grid is not None:
+                    self._sync_base_layer(grid)
+                    if len(self._layers) > 1:
+                        layer_views = self._layer_planes(grid, (xi, yi, zi), int(self.state.viewer.frame_index))
+            except Exception as exc:
+                logger.warning("Layer drawing failed: %s", exc, exc_info=True)
+                layer_views = None
         self._view.set_viewer_views(
             views,
             indices=(xi, yi, zi),
@@ -613,6 +814,7 @@ class ViewerController:
             overflow_blend=overflow_blend if overflow_blend > 0.0 else None,
             zoom_scale=zoom,
             window=window,
+            layers=layer_views,
         )
         value_text, plot_enabled = _resolve_value_display(
             vol=np.asarray(self._viewer_volume),
@@ -2182,6 +2384,31 @@ class ViewerController:
         except Exception:
             self._viewer_res = _affine_to_resolution(affine_arr)
             return np.asarray(raw)
+
+
+_LABEL_PALETTE: tuple[tuple[int, int, int], ...] = (
+    (230, 25, 75), (60, 180, 75), (255, 225, 25), (0, 130, 200), (245, 130, 48), (145, 30, 180),
+    (70, 240, 240), (240, 50, 230), (210, 245, 60), (250, 190, 212), (0, 128, 128), (170, 110, 40),
+)
+
+
+def _lut(name: str) -> np.ndarray:
+    """(256, 3) uint8 colour table for a layer's ``cmap``; unknown names give grey."""
+    ramp = np.arange(256, dtype=np.float64)
+    zero = np.zeros(256)
+    key = str(name or "gray").lower()
+    if key == "hot":
+        r = np.clip(ramp * 3, 0, 255)
+        g = np.clip(ramp * 3 - 255, 0, 255)
+        b = np.clip(ramp * 3 - 510, 0, 255)
+        table = np.stack([r, g, b], axis=1)
+    elif key in ("red", "green", "blue"):
+        chans = [zero, zero, zero]
+        chans[("red", "green", "blue").index(key)] = ramp
+        table = np.stack(chans, axis=1)
+    else:
+        table = np.stack([ramp, ramp, ramp], axis=1)
+    return table.astype(np.uint8)
 
 
 def _affine_to_resolution(affine: np.ndarray) -> tuple[float, float, float]:

@@ -46,10 +46,14 @@ class LoadVolumeRequest:
     flip_x: bool = False
     flip_y: bool = False
     flip_z: bool = False
-    # Ask before loading a reco whose 2dseq is larger than this (0 = never ask, WI-0068).
+    # Ask before a load that would make the data the worker holds larger than this
+    # (0 = never ask). Since WI-0072 (C9) the limit is for the total held by all layers.
     memory_limit_bytes: int = 0
     # The user already chose "continue" for this reco.
     memory_confirmed: bool = False
+    # (path, scan_id, reco_id) of the layers still shown. The worker frees the data it holds
+    # for any other reco before loading (C9). None keeps everything (the old behaviour).
+    keep: Optional[Tuple[Tuple[str, int, int], ...]] = None
 
 
 @dataclass(frozen=True)
@@ -64,17 +68,25 @@ class LoadVolumeResult:
     error: Optional[str] = None
     # Nothing was loaded: the expected size is over the limit and the user must choose.
     needs_confirm: bool = False
+    # This load's expected bytes, and the bytes the worker already holds for the layers
+    # that stay (C9); the notice compares their sum with limit_bytes.
     estimated_bytes: Optional[int] = None
     limit_bytes: int = 0
+    held_bytes: int = 0
 
 
 @dataclass(frozen=True)
-class TimecourseCacheRequest:
+class TimecourseRequest:
+    """One voxel's values over all frames, answered by the worker from the data it holds
+    (layer core C9, WI-0072; replaces the full-volume .npy file of WI-0068)."""
+
     job_id: str
     path: str
     scan_id: int
     reco_id: int
-    cache_path: str
+    # Voxel index on the displayed (RAS-reoriented) grid, and indices of axes after the 4th.
+    index: Tuple[int, int, int] = (0, 0, 0)
+    extra_indices: Tuple[int, ...] = ()
     slicepack_index: int = 0
     space: str = "scanner"
     subject_type: Optional[str] = None
@@ -85,11 +97,10 @@ class TimecourseCacheRequest:
 
 
 @dataclass(frozen=True)
-class TimecourseCacheResult:
+class TimecourseResult:
     job_id: str
-    cache_path: Optional[str]
-    shape: Tuple[int, ...]
-    dtype: str
+    values: Optional[List[float]]
+    index: Tuple[int, int, int] = (0, 0, 0)
     frames: int = 1
     error: Optional[str] = None
 

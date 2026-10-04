@@ -122,37 +122,40 @@ def test_affine_is_recomputed_when_a_request_setting_changes(worker_env):
     assert counts["axis"] == 1
 
 
-# ---- 2. timecourse npy is written from a contiguous array ---------------------------------
+# ---- 2. timecourse: answered by the worker from the held data (WI-0072 C9; the full-volume
+#      .npy file of WI-0068 is gone, so its contiguous-save test was replaced) ---------------
 
 
-def test_timecourse_cache_is_saved_contiguous_and_equal(monkeypatch, tmp_path):
+def test_timecourse_is_answered_on_the_reoriented_grid_without_a_file(monkeypatch, tmp_path):
     data = np.arange(3 * 4 * 5 * 6, dtype=np.int16).reshape(3, 4, 5, 6)
-    # an affine that swaps x and y makes reorient_to_ras return a permuted, non-contiguous view
+    # an affine that swaps x and y makes the displayed grid a permuted view of the data
     affine = np.array([[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=float)
-    scan = SimpleNamespace(get_dataobj=lambda reco_id, **kw: data)
+    scan = SimpleNamespace(get_dataobj=lambda reco_id, **kw: data, image_info={})
+    calls = {"affine": 0}
+
+    def affine_once(_scan, **kw):
+        calls["affine"] += 1
+        return affine
+
     monkeypatch.setattr(convert_worker, "_get_loader", lambda path: object())
     monkeypatch.setattr(convert_worker, "_ensure_hook_state", lambda loader, sid, enable_hook: scan)
-    monkeypatch.setattr(convert_worker, "_resolve_affine_for_space", lambda scan, **kw: affine)
-    saved = {}
-    real_save = np.save
-
-    def spy_save(path, arr, **kw):
-        saved["c_contiguous"] = bool(arr.flags["C_CONTIGUOUS"])
-        return real_save(path, arr, **kw)
-
-    monkeypatch.setattr(convert_worker.np, "save", spy_save)
+    monkeypatch.setattr(convert_worker, "_resolve_affine_for_space", affine_once)
+    monkeypatch.setattr(convert_worker.np, "save", lambda *a, **k: pytest.fail("no file is written"))
     from brkraw_viewer.utils.orientation import reorient_to_ras
 
     view, _ = reorient_to_ras(np.asarray(data), affine)
-    assert not view.flags["C_CONTIGUOUS"], "the synthetic case must produce a non-contiguous view"
     out = _Queue()
-    req = convert_worker.TimecourseCacheRequest(
-        job_id="t", path="p", scan_id=1, reco_id=1, cache_path=str(tmp_path / "tc.npy")
-    )
-    convert_worker._process_timecourse_cache(req, out)
-    assert out.items[0].error is None
-    assert saved["c_contiguous"] is True
-    assert np.array_equal(np.load(tmp_path / "tc.npy"), view)
+    for index in ((0, 0, 0), (3, 2, 4), (1, 2, 3)):
+        req = convert_worker.TimecourseRequest(job_id="t", path="p", scan_id=1, reco_id=1, index=index)
+        convert_worker._process_timecourse(req, out)
+        result = out.items[-1]
+        assert result.error is None and result.frames == 6 and result.index == index
+        assert result.values == view[index].astype(float).tolist()
+    assert calls["affine"] == 1  # computed once for many voxels
+    bad = convert_worker.TimecourseRequest(job_id="b", path="p", scan_id=1, reco_id=1, index=(9, 0, 0))
+    convert_worker._process_timecourse(bad, out)
+    assert out.items[-1].values is None and "outside" in out.items[-1].error
+    assert not list(tmp_path.iterdir())
 
 
 # ---- 3. an abandoned worker result frees its shared memory --------------------------------
@@ -194,29 +197,29 @@ def test_unreadable_volume_result_releases_its_shared_memory(controller, monkeyp
     assert not _shm_exists(name)
 
 
-# ---- 4. the timecourse cache key follows the source file's change time -------------------
+# ---- 4. timecourse requests: one per voxel and setting, stale answers dropped (WI-0072 C9;
+#      replaces the two .npy cache-key tests of WI-0068, the file no longer exists) ----------
 
 
-def test_timecourse_cache_key_changes_when_the_source_changes(controller, tmp_path):
-    study = tmp_path / "study.zip"
-    study.write_bytes(b"first")
-    controller.state.dataset.path = study
-    first = controller._resolve_timecourse_cache_path()
-    assert controller._resolve_timecourse_cache_path() == first
-    os.utime(study, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
-    assert controller._resolve_timecourse_cache_path() != first
+def test_timecourse_request_is_sent_once_per_voxel_and_old_answers_are_dropped(controller):
+    from brkraw_viewer.app.workers.protocol import TimecourseResult
 
-
-def test_timecourse_cache_key_for_a_folder_uses_the_2dseq_time(controller, tmp_path):
-    folder = tmp_path / "study"
-    pdata = folder / "3" / "pdata" / "1"
-    pdata.mkdir(parents=True)
-    seq = pdata / "2dseq"
-    seq.write_bytes(b"x")
-    controller.state.dataset.path = folder
-    first = controller._resolve_timecourse_cache_path()
-    os.utime(seq, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
-    assert controller._resolve_timecourse_cache_path() != first
+    controller._request_timecourse((1, 2, 3))
+    controller._request_timecourse((1, 2, 3))  # same voxel and settings: not sent again
+    assert len(ctrl_submitted) == 1
+    first = ctrl_submitted[-1]
+    assert first.index == (1, 2, 3) and (first.scan_id, first.reco_id) == (3, 1)
+    controller.state.viewer.flip_x = True
+    controller._request_timecourse((1, 2, 3))  # a setting changed: new request
+    assert len(ctrl_submitted) == 2 and ctrl_submitted[-1].flip_x is True
+    controller._on_timecourse_result(TimecourseResult(job_id=first.job_id, values=[9.0], frames=1))
+    assert controller._timecourse_series is None  # the older job's answer is ignored
+    latest = ctrl_submitted[-1]
+    controller._on_timecourse_result(TimecourseResult(job_id=latest.job_id, values=[1.0, 2.0], frames=2))
+    key, values = controller._timecourse_series
+    assert values == [1.0, 2.0] and key == controller._timecourse_key((1, 2, 3))
+    controller._clear_timecourse()
+    assert controller._timecourse_series is None and controller._timecourse_pending is None
 
 
 # ---- 5. cache settings: only what the code uses, and the docs say so ---------------------
@@ -225,7 +228,7 @@ def test_timecourse_cache_key_for_a_folder_uses_the_2dseq_time(controller, tmp_p
 def test_default_cache_settings_are_the_ones_the_code_reads():
     cache = viewer_config.default_viewer_config()["cache"]
     assert set(cache) == {"memory_limit_mb"}
-    assert cache["memory_limit_mb"] == 600
+    assert cache["memory_limit_mb"] == 1536  # total held by all layers (WI-0072, D-0095 3)
 
 
 def test_config_docs_describe_every_default_cache_setting_and_retired_keys():
@@ -244,7 +247,7 @@ def test_memory_limit_setting_is_read_by_the_controller(monkeypatch, tmp_path):
     cfg["cache"]["memory_limit_mb"] = 0
     assert ViewerController()._memory_limit_bytes == 0
     cfg["cache"]["memory_limit_mb"] = "bad"
-    assert ViewerController()._memory_limit_bytes == 600 * MB
+    assert ViewerController()._memory_limit_bytes == 1536 * MB
 
 
 # ---- 6. notice before loading a big reco: worker side ------------------------------------
@@ -272,10 +275,11 @@ def test_load_above_the_limit_asks_and_reads_nothing(worker_env):
     assert scan.reads == 0
 
 
-def test_default_limit_lets_500_mb_open_and_asks_before_1_gb(worker_env):
+def test_default_limit_lets_1_gb_open_and_asks_above_1536_mb(worker_env):
+    # WI-0072 (D-0095 3): 1536 MB for the total held; with nothing else held a 1 GB scan opens.
     scan, _counts = worker_env
     limit = viewer_config.default_viewer_config()["cache"]["memory_limit_mb"] * MB
-    for size_bytes, asks in ((500 * MB, False), (500 * 1000 * 1000, False), (1000 * 1000 * 1000, True), (1024 * MB, True)):
+    for size_bytes, asks in ((1000 * 1000 * 1000, False), (1024 * MB, False), (1536 * MB, False), (1538 * MB, True)):
         convert_worker._held_recos.clear()
         convert_worker._meta_cache.clear()
         scan.avail[1] = SimpleNamespace(file_visu_pars=_visu([size_bytes // 2], 1))  # 2 bytes per value
@@ -283,7 +287,7 @@ def test_default_limit_lets_500_mb_open_and_asks_before_1_gb(worker_env):
         assert result.needs_confirm is asks, size_bytes
         if not asks:
             _free(result)
-    assert scan.reads == 2
+    assert scan.reads == 3
 
 
 def test_load_at_or_below_the_limit_does_not_ask(worker_env):
@@ -346,7 +350,8 @@ def _needs_confirm(job_id, estimated=3 * MB, limit=1 * MB):
 def test_request_carries_the_limit(controller):
     controller._request_viewer_volume()
     req = ctrl_submitted[-1]
-    assert req.memory_limit_bytes == 600 * MB and req.memory_confirmed is False
+    assert req.memory_limit_bytes == 1536 * MB and req.memory_confirmed is False
+    assert req.keep == ((str(controller.state.dataset.path), 3, 1),)  # C9: only this reco stays held
 
 
 def test_user_continues_then_the_load_is_sent_again_as_confirmed(controller):

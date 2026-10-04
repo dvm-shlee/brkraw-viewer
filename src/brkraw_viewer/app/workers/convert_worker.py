@@ -18,8 +18,8 @@ from .protocol import (
     ConvertResult,
     LoadVolumeRequest,
     LoadVolumeResult,
-    TimecourseCacheRequest,
-    TimecourseCacheResult,
+    TimecourseRequest,
+    TimecourseResult,
     RegistryRequest,
     RegistryResult,
 )
@@ -33,8 +33,12 @@ _loader_cache: dict[str, brkapi.BrukerLoader] = {}
 # later frame (WI-0068: re-reading the JCAMP files cost ~0.52 s per frame).
 _UNSET = object()
 _meta_cache: dict[tuple, object] = {}
-# (path, scan_id, reco_id) of recos this worker already holds in memory.
-_held_recos: set[tuple] = set()
+# (path, scan_id, reco_id) of recos this worker has loaded -> bytes it still holds for it
+# (layer core C9, WI-0072). brkraw keeps a fully read reco in ``scan.image_info[reco]
+# ["dataobj"]`` (one copy); a frame-wise partial read or a hook result is not kept (0).
+_held_recos: dict[tuple, int] = {}
+# The scan objects behind ``_held_recos``, so their data can be freed (C9).
+_held_scans: dict[tuple, object] = {}
 
 
 def _memo(key: tuple, compute):
@@ -147,8 +151,8 @@ def run_worker(
             if isinstance(task, LoadVolumeRequest):
                 _process_load_volume(task, output_queue)
                 continue
-            if isinstance(task, TimecourseCacheRequest):
-                _process_timecourse_cache(task, output_queue)
+            if isinstance(task, TimecourseRequest):
+                _process_timecourse(task, output_queue)
                 continue
             if isinstance(task, RegistryRequest):
                 _process_registry(task, output_queue)
@@ -340,6 +344,71 @@ def _expected_nbytes(scan: ScanLoader, reco_id: int) -> Optional[int]:
         return None
 
 
+def _hook_output_nbytes(scan: ScanLoader, reco_id: int, data_kwargs: dict) -> Optional[int]:
+    """Bytes a converter hook's ``get_dataobj`` will return, when the hook says (C9).
+
+    A hook module that offers ``get_dataobj_info(scan, reco_id, **kwargs)`` (brkraw-sordino
+    does, WI-0071) reports the size of its output without reading. None when the hook does
+    not offer it or it fails; the caller then falls back to the 2dseq size.
+    """
+    hook = getattr(scan, "_converter_hook", None)
+    func = hook.get("get_dataobj") if isinstance(hook, dict) or hasattr(hook, "get") else None
+    if func is None:
+        return None
+    while hasattr(func, "func"):  # functools.partial
+        func = getattr(func, "func")
+    func = getattr(func, "__func__", func)  # bound method
+    module = sys.modules.get(getattr(func, "__module__", "") or "")
+    info_func = getattr(module, "get_dataobj_info", None) if module is not None else None
+    if not callable(info_func):
+        return None
+    try:
+        info = info_func(scan, reco_id, **data_kwargs)
+        nbytes = info.get("nbytes") if isinstance(info, dict) else None
+        return int(nbytes) if nbytes is not None else None
+    except Exception as exc:
+        logger.debug("Hook size unavailable for reco %s: %s", reco_id, exc)
+        return None
+
+
+def _kept_nbytes(scan: ScanLoader, reco_id: int) -> int:
+    """Bytes brkraw keeps for this reco after a read (its cached ``dataobj``), else 0."""
+    try:
+        info = getattr(scan, "image_info", {}).get(reco_id)
+        dataobj = info.get("dataobj") if isinstance(info, dict) else None
+        return int(getattr(dataobj, "nbytes", 0) or 0)
+    except Exception:
+        return 0
+
+
+def _release_reco(key: tuple) -> None:
+    """Free the data the worker holds for one reco (C9). Never raises."""
+    nbytes = _held_recos.pop(key, 0)
+    scan = _held_scans.pop(key, None)
+    if scan is None:
+        return
+    try:
+        reco_id = key[2]
+        info = getattr(scan, "image_info", {}).get(reco_id)
+        if isinstance(info, dict) and info.get("dataobj") is not None:
+            # brkraw reads the data again (load_data=True) when ``dataobj`` is None.
+            freed = dict(info)
+            freed["dataobj"] = None
+            scan.image_info[reco_id] = freed  # type: ignore[index]
+            logger.debug("Released reco %s (%s bytes)", key, nbytes)
+    except Exception as exc:
+        logger.debug("Release of reco %s failed: %s", key, exc)
+
+
+def _release_others(keep: Optional[tuple], current: tuple) -> None:
+    """Free every held reco that is neither ``current`` nor in ``keep`` (None = keep all)."""
+    if keep is None:
+        return
+    wanted = {tuple(k) for k in keep} | {current}
+    for key in [k for k in _held_recos if k not in wanted]:
+        _release_reco(key)
+
+
 def _affine_for_request(scan: ScanLoader, task: LoadVolumeRequest, hook_args: dict):
     """Affine (list) for this request, computed once per (reco, space, flips, hook, slicepack)."""
     key = (
@@ -399,10 +468,31 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         scan = _ensure_hook_state(loader, task.scan_id, enable_hook=enable_hook)
         hook_args = task.hook_args or {}
         reco_key = (task.path, task.scan_id, task.reco_id)
+        # C9: first free what the layers no longer shown hold, then count what stays.
+        _release_others(task.keep, reco_key)
+        data_kwargs = _filter_hook_kwargs(scan.get_dataobj, hook_args)
+        # flip_* are affine-only options; never pass them to get_dataobj.
+        for key in ("flip_x", "flip_y", "flip_z"):
+            data_kwargs.pop(key, None)
         if task.memory_limit_bytes > 0 and not task.memory_confirmed and reco_key not in _held_recos:
-            expected = _memo(("nbytes",) + reco_key, lambda: _expected_nbytes(scan, task.reco_id))
-            if isinstance(expected, int) and expected > task.memory_limit_bytes:
-                logger.info("Load needs confirmation: %s bytes > limit %s", expected, task.memory_limit_bytes)
+
+            def expected_size() -> Optional[int]:
+                if enable_hook:
+                    # a hook can change shape and dtype: ask the hook first (C9)
+                    hooked = _hook_output_nbytes(scan, task.reco_id, data_kwargs)
+                    if hooked is not None:
+                        return hooked
+                return _expected_nbytes(scan, task.reco_id)
+
+            expected = _memo(("nbytes",) + reco_key + _hook_key(task.hook_name, hook_args), expected_size)
+            held_other = int(sum(v for k, v in _held_recos.items() if k != reco_key))
+            if isinstance(expected, int) and expected + held_other > task.memory_limit_bytes:
+                logger.info(
+                    "Load needs confirmation: %s bytes + %s held > limit %s",
+                    expected,
+                    held_other,
+                    task.memory_limit_bytes,
+                )
                 output_queue.put(
                     LoadVolumeResult(
                         job_id=task.job_id,
@@ -412,13 +502,10 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
                         needs_confirm=True,
                         estimated_bytes=expected,
                         limit_bytes=task.memory_limit_bytes,
+                        held_bytes=held_other,
                     )
                 )
                 return
-        data_kwargs = _filter_hook_kwargs(scan.get_dataobj, hook_args)
-        # flip_* are affine-only options; never pass them to get_dataobj.
-        for key in ("flip_x", "flip_y", "flip_z"):
-            data_kwargs.pop(key, None)
         if hook_args:
             logger.debug("Viewer hook args=%s filtered_data=%s", hook_args, data_kwargs)
         num_cycles = None
@@ -506,14 +593,18 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         )
         logger.debug("Load volume result: shape=%s slicepacks=%s frames=%s", getattr(data, "shape", None), slicepacks, frames)
         affine = _affine_for_request(scan, task, hook_args)
-        _held_recos.add(reco_key)
+        # C9: what brkraw keeps for this reco is the one copy the worker holds.
+        _held_recos[reco_key] = _kept_nbytes(scan, task.reco_id)
+        _held_scans[reco_key] = scan
         shm_name = create_shared_array(data)
+        out_shape, out_dtype = tuple(cast(np.ndarray, data).shape), str(data.dtype)
+        del data  # the block now has the values; keep no second reference in this frame
         output_queue.put(
             LoadVolumeResult(
                 job_id=task.job_id,
                 shm_name=shm_name,
-                shape=cast(np.ndarray, data).shape,
-                dtype=str(data.dtype),
+                shape=out_shape,
+                dtype=out_dtype,
                 affine=affine,
                 slicepacks=slicepacks,
                 frames=frames,
@@ -536,37 +627,33 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         )
 
 
-def _process_timecourse_cache(task: TimecourseCacheRequest, output_queue: multiprocessing.Queue) -> None:
-    try:
-        logger.debug(
-            "Timecourse cache start: scan=%s reco=%s slicepack=%s space=%s path=%s",
-            task.scan_id,
-            task.reco_id,
-            task.slicepack_index,
-            task.space,
-            task.cache_path,
-        )
-        loader = _get_loader(task.path)
-        scan = _ensure_hook_state(loader, task.scan_id, enable_hook=False)
-        data = scan.get_dataobj(task.reco_id)
-        if data is None:
-            output_queue.put(
-                TimecourseCacheResult(
-                    job_id=task.job_id,
-                    cache_path=None,
-                    shape=(),
-                    dtype="",
-                    frames=1,
-                    error="No data returned",
-                )
-            )
-            return
-        slicepacks = len(data) if isinstance(data, tuple) else 1
-        if isinstance(data, tuple):
-            idx = int(task.slicepack_index or 0)
-            if idx < 0 or idx >= len(data):
-                idx = 0
-            data = data[idx]
+def _timecourse_view(scan: ScanLoader, task: TimecourseRequest) -> np.ndarray:
+    """The held reco as a view on the displayed (RAS-reoriented) grid; nothing is copied.
+
+    brkraw keeps a fully read reco in ``image_info`` (the one copy the worker holds, C9);
+    the reorientation is flips and a transpose, so the result is a view of that array.
+    """
+    data = scan.get_dataobj(task.reco_id)
+    if data is None:
+        raise ValueError("No data returned")
+    if isinstance(data, tuple):
+        idx = int(task.slicepack_index or 0)
+        data = data[idx if 0 <= idx < len(data) else 0]
+    key = (
+        "tc-affine",
+        task.path,
+        task.scan_id,
+        task.reco_id,
+        task.space,
+        task.subject_type,
+        task.subject_pose,
+        bool(task.flip_x),
+        bool(task.flip_y),
+        bool(task.flip_z),
+        int(task.slicepack_index or 0),
+    )
+
+    def compute():
         affine = _resolve_affine_for_space(
             scan,
             reco_id=task.reco_id,
@@ -580,52 +667,52 @@ def _process_timecourse_cache(task: TimecourseCacheRequest, output_queue: multip
         )
         if isinstance(affine, tuple):
             idx = int(task.slicepack_index or 0)
-            if idx < 0 or idx >= len(affine):
-                idx = 0
-            affine = affine[idx]
-        if affine is not None:
-            try:
-                from brkraw_viewer.utils.orientation import reorient_to_ras
+            affine = affine[idx if 0 <= idx < len(affine) else 0]
+        return None if affine is None else np.asarray(affine, dtype=float)
 
-                data, _ = reorient_to_ras(np.asarray(data), np.asarray(affine))
-            except Exception:
-                data = np.asarray(data)
-        else:
-            data = np.asarray(data)
-        frames = 1
-        try:
-            if data.ndim >= 4:
-                frames = int(data.shape[3])
-        except Exception:
-            frames = 1
-        # The re-oriented array is a permuted view; np.save of a non-contiguous view
-        # took 9.7 s for 298.6 MB, of a contiguous copy 0.6 s (WI-0011 table 3).
-        data = np.ascontiguousarray(data)
-        cache_path = Path(task.cache_path)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        np.save(cache_path, data, allow_pickle=False)
-        logger.debug("Timecourse cache saved: path=%s shape=%s dtype=%s", cache_path, data.shape, data.dtype)
+    affine = _memo(key, compute)
+    arr = np.asarray(data)
+    if affine is None:
+        return arr
+    from brkraw_viewer.utils.orientation import reorient_to_ras
+
+    view, _ = reorient_to_ras(arr, affine)
+    return view
+
+
+def _process_timecourse(task: TimecourseRequest, output_queue: multiprocessing.Queue) -> None:
+    """One voxel's values over the frames, from the held array (C9: no file, no full copy)."""
+    try:
+        loader = _get_loader(task.path)
+        scan = _ensure_hook_state(loader, task.scan_id, enable_hook=False)
+        view = _timecourse_view(scan, task)
+        reco_key = (task.path, task.scan_id, task.reco_id)
+        _held_recos[reco_key] = max(_held_recos.get(reco_key, 0), _kept_nbytes(scan, task.reco_id))
+        _held_scans[reco_key] = scan
+        if view.ndim < 4:
+            raise ValueError("Timecourse requires 4D data.")
+        xi, yi, zi = (int(v) for v in task.index)
+        for axis, value in enumerate((xi, yi, zi)):
+            if not 0 <= value < view.shape[axis]:
+                raise ValueError(f"index {task.index} is outside the data {view.shape[:3]}")
+        slicer: list = [xi, yi, zi, slice(None)]
+        for i in range(4, view.ndim):
+            extra = task.extra_indices[i - 4] if (i - 4) < len(task.extra_indices) else 0
+            slicer.append(min(max(int(extra), 0), view.shape[i] - 1))
+        series = np.asarray(view[tuple(slicer)], dtype=np.float64).reshape(-1)
         output_queue.put(
-            TimecourseCacheResult(
+            TimecourseResult(
                 job_id=task.job_id,
-                cache_path=str(cache_path),
-                shape=cast(np.ndarray, data).shape,
-                dtype=str(data.dtype),
-                frames=frames,
+                values=series.tolist(),
+                index=(xi, yi, zi),
+                frames=int(view.shape[3]),
                 error=None,
             )
         )
     except Exception as exc:
-        logger.error("Timecourse cache failed: %s", exc, exc_info=True)
+        logger.error("Timecourse failed: %s", exc, exc_info=True)
         output_queue.put(
-            TimecourseCacheResult(
-                job_id=task.job_id,
-                cache_path=None,
-                shape=(),
-                dtype="",
-                frames=1,
-                error=str(exc),
-            )
+            TimecourseResult(job_id=task.job_id, values=None, index=tuple(task.index), frames=1, error=str(exc))
         )
 
 

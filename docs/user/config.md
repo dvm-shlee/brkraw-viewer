@@ -10,7 +10,7 @@ that file, so teams can share one configuration.
 ```yaml
 viewer:
   cache:
-    memory_limit_mb: 600    # ask above this size in MB; 0 = never ask
+    memory_limit_mb: 1536   # ask when the data held would pass this many MB; 0 = never ask
     # path: cache           # optional, see "Disk cache" below
   registry:
     path: viewer/registry.jsonl
@@ -39,40 +39,48 @@ again when you press **Refresh** and when the viewer starts.
 
 ## Memory notice
 
-The viewer keeps the whole 2dseq of the selected scan in its worker process so that
-changing the frame takes milliseconds. Before it reads a scan, it computes the size of
-that data from the scan parameters (`VisuCoreSize` x `VisuCoreFrameCount` x word size
-in `visu_pars`; nothing is read yet). If the size is over
-`viewer.cache.memory_limit_mb` it asks whether to load it. If the size cannot be
-computed, it does not ask. The size comes from the stored data, so a converter hook that
-changes the data shape can make the estimate inexact. The notice applies to the Viewer
-tab only; Convert does not ask.
+The viewer's worker process reads the data; the window shows one frame at a time. When
+a whole scan is read (a single-frame scan, the Timecourse window, or a converter hook
+that returns every frame), the worker keeps that one copy so later frames and
+timecourses take milliseconds. When you select another scan, the worker frees what it
+held for the previous one.
+
+Before it reads a scan, the viewer computes the size of that data from the scan
+parameters (`VisuCoreSize` x `VisuCoreFrameCount` x word size in `visu_pars`; nothing is
+read yet). When a converter hook is on and the hook can report the size of what it
+returns (brkraw-sordino does), that size is used instead. If this size plus what the
+worker still holds for other shown data is over `viewer.cache.memory_limit_mb`, it asks
+whether to load it. If the size cannot be computed, it does not ask. The notice applies
+to the Viewer tab only; Convert does not ask.
 
 - **Yes** is remembered for that scan and reconstruction until you open another
   dataset, so the viewer does not ask again for it.
 - **No** cancels the load. Selecting the scan or reconstruction again (or pressing
   Refresh) asks again.
 
-Loading needs roughly 3.1 to 3.7 times the data size
-in memory once loaded and up to about 5 times at the peak, measured on one 298.6 MB scan.
+Measured on one 298.6 MB scan (72 x 72 x 32 x 900, int16) with brkraw 0.6.1rc1: showing
+one frame keeps the worker near 80 MB; reading the whole scan for the Timecourse
+window holds one copy, about 1.1 times the data (worker about 370 MB, folder and zip);
+the main window process does not copy the frames it receives. Reading every frame at
+once (a converter hook) briefly needs about twice the data while the frames are handed
+to the window.
 
-The default is 600 MB, chosen for a laptop with 8 GB of memory: a 500 MB 2dseq
-opens without asking, and a 1 GB one is announced before anything is read. A scan just
-above the default would need about 2.2 GB once loaded and about 3 GB at the peak
-(3.7 and 5 times the data size, measured on one 298.6 MB scan). Set it from your
-computer's memory and your largest scan; on a 16 GB computer 1024 is reasonable. `cache.enabled` and `cache.max_items`
+The default is 1536 MB for everything held, chosen for a laptop with 8 GB of memory:
+a 1 GB 2dseq opens without asking when little else is held. Earlier viewer versions
+used 600 MB per scan, because with brkraw before 0.6.1 reading needed 3 to 5 times the
+data size. Set it
+from your computer's memory and your largest scan. `cache.enabled` and `cache.max_items`
 were never read by the viewer; they are removed from the defaults and ignored if they
 are still in an existing `config.yaml`.
 
 ## Disk cache
 
-For multi-frame data, the Timecourse window writes a temporary `.npy` file of the whole
-series in the `viewer` subfolder of the folder given by `viewer.cache.path` (relative paths
-are taken from the BrkRaw config folder; `cache` there when the setting is empty). The viewer
-removes it when you close the Timecourse window or select another scan or dataset, and builds
-a new one when the source file changes. When you close the viewer, it checks the same
-`viewer.cache.path` folder and, if it holds files, asks whether to clear it, so the
-Timecourse files are included.
+`viewer.cache.path` names a folder for cache files (relative paths are taken from the
+BrkRaw config folder; `cache` there when the setting is empty). When you close the
+viewer, it checks this folder and, if it holds files, asks whether to clear it. The
+Timecourse window no longer writes files: the worker answers each voxel's series from
+the data it holds (earlier versions wrote a temporary `.npy` file of the whole series
+here).
 
 For one-off external registry files, use CLI output override:
 

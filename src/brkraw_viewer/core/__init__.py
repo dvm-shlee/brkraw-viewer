@@ -4,6 +4,7 @@ numpy only. The viewport, the controller and later the Python handle use these
 functions; nothing here imports Tk.
 """
 from .composite import composite_over, label_rgba, layer_rgba, transparency_mask, window_to_index
+from .layers import Layer, LayerError, LayerStack
 from .roi import ellipse_mask, rect_mask, roi_stats
 from .resample import (
     Grid,
@@ -21,6 +22,9 @@ from .window import MAX_WINDOW_SAMPLES, default_window, normalize_window, window
 
 __all__ = [
     "Grid",
+    "Layer",
+    "LayerError",
+    "LayerStack",
     "MAX_WINDOW_SAMPLES",
     "SpaceMismatchError",
     "composite_over",

@@ -44,10 +44,11 @@ The Viewer tab shows three orthogonal views of the volume: X-Z, X-Y and Z-Y.
   you set one), with the scan layout name plus the position and plane in the file
   name.
 
-Each view is scaled for display between the 1st and 99th percentile of the slice
-that is shown. The brightness range is therefore recomputed whenever you move to
-another slice, and there is no window/level control (see
-[Known limitations](#known-limitations)).
+The views are scaled for display between the 1st and 99th percentile of the whole
+frame (from at most one million evenly spaced voxels), computed once when the frame is
+loaded. All three views and every slice of a frame use the same brightness range, so
+moving to another slice does not change how bright a value looks. There is no
+window/level control yet (see [Known limitations](#known-limitations)).
 
 ## Controls
 
@@ -81,7 +82,9 @@ open. The `+` menu can also add a study folder or an archive file.
 
 ## Known limitations
 
-- One image volume is shown at a time. Layer composition, ROI statistics and label
-  editing are planned and are not available.
-- Brightness is scaled per slice as described under [Views](#views).
+- One image volume is shown at a time. The layer core (grids, resampling, layer
+  composition, ROI statistics) exists in `brkraw_viewer.core`, but the Viewer tab has
+  no controls for extra layers or ROIs yet; label editing is planned.
+- Brightness is one range per frame as described under [Views](#views); there is no
+  window/level control yet.
 - Extensions cannot draw on the Viewer tab; they add a panel in the Extensions tab.

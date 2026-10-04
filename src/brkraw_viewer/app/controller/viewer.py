@@ -26,8 +26,8 @@ from ..workers.protocol import (
     ConvertResult,
     LoadVolumeRequest,
     LoadVolumeResult,
-    TimecourseCacheRequest,
-    TimecourseCacheResult,
+    TimecourseRequest,
+    TimecourseResult,
     RegistryRequest,
     RegistryResult,
 )
@@ -41,14 +41,12 @@ from brkraw.api.types import (
     SubjectPose,
     AffineSpace,
 )
-import hashlib
-
 import numpy as np
 import logging
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MEMORY_LIMIT_MB = 600
+DEFAULT_MEMORY_LIMIT_MB = 1536  # total held by all layers (D-0095 3, WI-0072); was 600 per load
 
 
 def _memory_limit_bytes_from_config(cfg: dict) -> int:
@@ -58,30 +56,6 @@ def _memory_limit_bytes_from_config(cfg: dict) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         value = DEFAULT_MEMORY_LIMIT_MB
     return max(int(value * 1024 * 1024), 0)
-
-
-def _stat_stamp(path: Path) -> str:
-    st = path.stat()
-    return f"{st.st_mtime_ns}:{st.st_size}"
-
-
-def _source_stamp(path: Optional[Path], scan_id: Optional[int], reco_id: Optional[int]) -> str:
-    """Change time and size of the data the timecourse cache was built from.
-
-    Zip/archive: the file itself. Folder: the reco's 2dseq and visu_pars (falls back to
-    the folder). Missing files give ``"none"`` so the key still works.
-    """
-    if path is None:
-        return "none"
-    p = Path(path)
-    try:
-        if p.is_file():
-            return _stat_stamp(p)
-        reco_dir = p / str(scan_id) / "pdata" / str(reco_id)
-        parts = [_stat_stamp(f) for f in (reco_dir / "2dseq", reco_dir / "visu_pars") if f.exists()]
-        return "|".join(parts) if parts else _stat_stamp(p)
-    except OSError:
-        return "none"
 
 
 class ViewerController:
@@ -94,7 +68,7 @@ class ViewerController:
         self._worker = WorkerManager(
             on_convert_result=self._on_convert_result,
             on_volume_result=self._on_volume_result,
-            on_timecourse_cache_result=self._on_timecourse_cache_result,
+            on_timecourse_result=self._on_timecourse_result,
             on_registry_result=self._on_registry_result,
         )
         self._popups: dict[str, TaskPopup] = {}
@@ -123,10 +97,13 @@ class ViewerController:
         self._hook_args_by_name: dict[str, dict] = {}
         self._timecourse_window = None
         self._timecourse_plot = None
-        self._timecourse_cache_path: Optional[str] = None
+        # C9 (WI-0072): the worker answers one voxel's timecourse from the data it holds;
+        # main keeps only the last answer (no full-volume file, no full copy).
+        self._timecourse_job_id: Optional[str] = None
+        self._timecourse_pending: Optional[tuple] = None
+        self._timecourse_series: Optional[tuple] = None  # (request key, values)
+        self._timecourse_frames: int = 0
         self._viewer_space_listeners: list[Callable[[str], None]] = []
-        self._timecourse_cache_data: Optional[np.ndarray] = None
-        self._timecourse_cache_job_id: Optional[str] = None
         self._frame_cache: "OrderedDict[int, dict]" = OrderedDict()
         self._frame_cache_limit = 8
         self._pending_frame_requests: dict[str, int] = {}
@@ -220,15 +197,11 @@ class ViewerController:
                 self._view.set_status("Load failed: empty result")
             return
         try:
-            from ..workers.shm import read_shared_array
+            from ..workers.shm import map_shared_array
 
-            arr, shm = read_shared_array(result.shm_name, result.shape, result.dtype)
-            data = arr.copy()
-            shm.close()
-            try:
-                shm.unlink()
-            except Exception:
-                pass
+            # C9 (WI-0072): use the shared block itself (no second copy in main); its name
+            # is removed at once and the memory is freed with the last array using it.
+            data = map_shared_array(result.shm_name, result.shape, result.dtype)
         except Exception as exc:
             release_shared_array(result.shm_name)
             if self._view is not None:
@@ -311,7 +284,9 @@ class ViewerController:
         """The worker did not load: the expected size is over the limit. Ask, then go on or stop."""
         if self._viewer_job_id and result.job_id != self._viewer_job_id:
             return
-        estimated_mb = float(result.estimated_bytes or 0) / (1024 * 1024)
+        # C9: the limit is for the total held by all layers, so ask with that total.
+        total_bytes = int(result.estimated_bytes or 0) + int(getattr(result, "held_bytes", 0) or 0)
+        estimated_mb = float(total_bytes) / (1024 * 1024)
         limit_mb = float(result.limit_bytes or 0) / (1024 * 1024)
         key = self._memory_key()
         ask = getattr(self._view, "confirm_large_load", None)
@@ -334,54 +309,33 @@ class ViewerController:
             )
 
     def _memory_request_fields(self) -> dict:
+        key = self._memory_key()
         return {
             "memory_limit_bytes": self._memory_limit_bytes,
-            "memory_confirmed": self._memory_key() in self._memory_confirmed,
+            "memory_confirmed": key in self._memory_confirmed,
+            # C9 (WI-0072): the viewer shows one scan layer, so the worker keeps only the
+            # reco being loaded and frees what it holds for any other.
+            "keep": (key,),
         }
 
-    def _on_timecourse_cache_result(self, result: TimecourseCacheResult) -> None:
-        if self._timecourse_cache_job_id and result.job_id != self._timecourse_cache_job_id:
+    def _on_timecourse_result(self, result: TimecourseResult) -> None:
+        """The worker's answer for one voxel (C9). Older answers are dropped."""
+        if result.job_id != self._timecourse_job_id:
             return
-        self._timecourse_cache_job_id = None
-        logger.debug(
-            "Timecourse cache result: job=%s error=%s path=%s shape=%s frames=%s",
-            result.job_id,
-            result.error,
-            result.cache_path,
-            result.shape,
-            result.frames,
-        )
-        if result.error:
+        key = self._timecourse_pending
+        self._timecourse_job_id = None
+        self._timecourse_pending = None
+        logger.debug("Timecourse result: job=%s error=%s frames=%s", result.job_id, result.error, result.frames)
+        if result.error or result.values is None:
+            self._timecourse_series = None
             if self._timecourse_plot is not None:
-                self._timecourse_plot.set_message(f"Cache failed: {result.error}")
+                self._timecourse_plot.set_message(f"Timecourse failed: {result.error or 'no data'}")
             if self._view is not None:
-                self._view.set_status(f"Timecourse cache failed: {result.error}")
+                self._view.set_status(f"Timecourse failed: {result.error or 'no data'}")
             return
-        if not result.cache_path:
-            if self._timecourse_plot is not None:
-                self._timecourse_plot.set_message("Cache failed.")
-            if self._view is not None:
-                self._view.set_status("Timecourse cache failed.")
-            return
-        self._timecourse_cache_path = result.cache_path
-        try:
-            self._timecourse_cache_data = np.load(result.cache_path, mmap_mode="r")
-        except Exception:
-            self._timecourse_cache_data = None
-            if self._timecourse_plot is not None:
-                self._timecourse_plot.set_message("Cache load failed.")
-            if self._view is not None:
-                self._view.set_status("Timecourse cache failed.")
-            return
+        self._timecourse_series = (key, list(result.values))
+        self._timecourse_frames = int(result.frames or len(result.values))
         self._update_timecourse_plot()
-        if self._view is not None:
-            self._view.set_status("Timecourse cached.")
-            try:
-                current = self._view.get_selected_tab()
-            except Exception:
-                current = None
-            if not current:
-                self._view.select_tab("Viewer")
 
     def _resolve_cycle_frames(self) -> int:
         sid = self.state.dataset.selected_scan_id
@@ -765,48 +719,55 @@ class ViewerController:
         if self._view is not None:
             self._view.set_status("Loading volume...")
 
-    def _request_timecourse_cache(self) -> None:
-        if self.state.dataset.path is None:
-            return
+    def _timecourse_key(self, indices: tuple[int, int, int]) -> Optional[tuple]:
+        """Everything that decides one timecourse answer, or None without a selection."""
         sid = self.state.dataset.selected_scan_id
         rid = self.state.dataset.selected_reco_id
-        if sid is None or rid is None:
+        if self.state.dataset.path is None or sid is None or rid is None:
+            return None
+        v = self.state.viewer
+        subject = v.space == "subject_ras"
+        return (
+            str(self.state.dataset.path),
+            int(sid),
+            int(rid),
+            int(v.slicepack_index),
+            str(v.space),
+            v.subject_type if subject else None,
+            v.subject_pose if subject else None,
+            bool(v.flip_x),
+            bool(v.flip_y),
+            bool(v.flip_z),
+            tuple(int(i) for i in indices),
+            tuple(int(i) for i in (v.extra_indices or [])),
+        )
+
+    def _request_timecourse(self, indices: tuple[int, int, int]) -> None:
+        """Ask the worker for one voxel's values over the frames (C9). Repeats are not sent."""
+        key = self._timecourse_key(indices)
+        if key is None or key == self._timecourse_pending:
             return
-        if self._timecourse_cache_job_id is not None:
-            if self._view is not None:
-                self._view.set_status("Caching timecourse volume...")
-            return
-        cache_path = self._resolve_timecourse_cache_path()
-        if self._timecourse_cache_path and self._timecourse_cache_path != cache_path:
-            self._clear_timecourse_cache()
-        self._timecourse_cache_path = cache_path
-        job_id = f"timecourse-cache-{dt.datetime.now().timestamp()}"
-        self._timecourse_cache_job_id = job_id
-        req = TimecourseCacheRequest(
+        (path, sid, rid, slicepack, space, subject_type, subject_pose, fx, fy, fz, index, extra) = key
+        job_id = f"timecourse-{dt.datetime.now().timestamp()}"
+        self._timecourse_job_id = job_id
+        self._timecourse_pending = key
+        req = TimecourseRequest(
             job_id=job_id,
-            path=str(self.state.dataset.path),
-            scan_id=int(sid),
-            reco_id=int(rid),
-            cache_path=cache_path,
-            slicepack_index=self.state.viewer.slicepack_index,
-            space=self.state.viewer.space,
-            subject_type=self.state.viewer.subject_type if self.state.viewer.space == "subject_ras" else None,
-            subject_pose=self.state.viewer.subject_pose if self.state.viewer.space == "subject_ras" else None,
-            flip_x=self.state.viewer.flip_x,
-            flip_y=self.state.viewer.flip_y,
-            flip_z=self.state.viewer.flip_z,
+            path=path,
+            scan_id=sid,
+            reco_id=rid,
+            index=index,
+            extra_indices=extra,
+            slicepack_index=slicepack,
+            space=space,
+            subject_type=subject_type,
+            subject_pose=subject_pose,
+            flip_x=fx,
+            flip_y=fy,
+            flip_z=fz,
         )
-        logger.debug(
-            "Timecourse cache request: scan=%s reco=%s slicepack=%s space=%s path=%s",
-            sid,
-            rid,
-            self.state.viewer.slicepack_index,
-            self.state.viewer.space,
-            cache_path,
-        )
+        logger.debug("Timecourse request: scan=%s reco=%s index=%s", sid, rid, index)
         self._worker.submit(req)
-        if self._view is not None:
-            self._view.set_status("Caching timecourse volume...")
 
     def _request_full_viewer_volume(self) -> None:
         if self.state.dataset.path is None:
@@ -869,44 +830,12 @@ class ViewerController:
                 allow_toggle=True,
             )
 
-    def _resolve_timecourse_cache_path(self) -> str:
-        base = resolve_cache_dir() / "viewer"
-        try:
-            base.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
-        parts = [
-            "timecourse",
-            "full",
-            str(self.state.dataset.path or ""),
-            str(self.state.dataset.selected_scan_id or ""),
-            str(self.state.dataset.selected_reco_id or ""),
-            str(self.state.viewer.space or ""),
-            str(self.state.viewer.subject_type or ""),
-            str(self.state.viewer.subject_pose or ""),
-            str(int(self.state.viewer.flip_x)),
-            str(int(self.state.viewer.flip_y)),
-            str(int(self.state.viewer.flip_z)),
-            str(int(self.state.viewer.slicepack_index)),
-            # a changed source file must not reuse an old cache file (WI-0068)
-            _source_stamp(
-                self.state.dataset.path,
-                self.state.dataset.selected_scan_id,
-                self.state.dataset.selected_reco_id,
-            ),
-        ]
-        key = hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()
-        return str(base / f"{key}.npy")
-
-    def _clear_timecourse_cache(self) -> None:
-        if self._timecourse_cache_path:
-            try:
-                Path(self._timecourse_cache_path).unlink(missing_ok=True)
-            except Exception:
-                pass
-        self._timecourse_cache_path = None
-        self._timecourse_cache_data = None
-        self._timecourse_cache_job_id = None
+    def _clear_timecourse(self) -> None:
+        """Forget the last timecourse answer and any pending request (nothing on disk, C9)."""
+        self._timecourse_job_id = None
+        self._timecourse_pending = None
+        self._timecourse_series = None
+        self._timecourse_frames = 0
 
     def _clear_frame_cache(self) -> None:
         self._frame_cache.clear()
@@ -1163,7 +1092,7 @@ class ViewerController:
         summary = self.dataset.open_dataset(path)
         self._forget_memory_choices()
         self._reset_viewer_hook_state()
-        self._clear_timecourse_cache()
+        self._clear_timecourse()
         self._clear_frame_cache()
         self._convert_layout_cache_key = None
         self.state.dataset.path = summary.path
@@ -1194,7 +1123,7 @@ class ViewerController:
         self._viewer_hook_args = None
         self._viewer_hook_locked = False
         self.state.viewer.hook_locked = False
-        self._clear_timecourse_cache()
+        self._clear_timecourse()
         self._clear_viewer_volume(status="No dataset open.")
         self._sync_view()
         self._update_params_summary()
@@ -1209,7 +1138,7 @@ class ViewerController:
         self.state.dataset.selected_reco_id = None
         self._memory_declined.clear()
         self._reset_viewer_hook_state()
-        self._clear_timecourse_cache()
+        self._clear_timecourse()
         self._clear_viewer_volume(status="No image loaded.")
         self.dataset.materialize_scan(int(scan_id))
         if self._view is not None:
@@ -1232,7 +1161,7 @@ class ViewerController:
         self.state.dataset.selected_reco_id = int(reco_id)
         self._memory_declined.clear()
         self._reset_viewer_hook_state()
-        self._clear_timecourse_cache()
+        self._clear_timecourse()
         self._clear_frame_cache()
         if self._view is not None:
             sid = self.state.dataset.selected_scan_id
@@ -1627,30 +1556,8 @@ class ViewerController:
             if self._timecourse_plot is not None:
                 self._timecourse_plot.set_message("Load image first.")
             return
-        cache_path = self._resolve_timecourse_cache_path()
-        if self._timecourse_cache_path == cache_path:
-            if self._timecourse_cache_data is None and Path(cache_path).exists():
-                try:
-                    self._timecourse_cache_data = np.load(cache_path, mmap_mode="r")
-                except Exception:
-                    self._timecourse_cache_data = None
-            if self._timecourse_cache_data is not None:
-                self._update_timecourse_plot()
-                return
-        vol = self._viewer_volume
-        need_full = True
-        if vol is not None:
-            try:
-                arr = np.asarray(vol)
-                need_full = not (arr.ndim >= 4 and int(arr.shape[3]) > 1)
-            except Exception:
-                need_full = True
-        if need_full:
-            if self._timecourse_plot is not None:
-                self._timecourse_plot.set_message("Loading full volume...")
-            self._request_timecourse_cache()
-        else:
-            self._update_timecourse_plot()
+        # Main shows one frame; the worker answers from the data it holds (C9).
+        self._update_timecourse_plot()
 
     def on_viewer_space_change(self, value: str) -> None:
         logger.debug("Viewer space change: %s", value)
@@ -1702,7 +1609,7 @@ class ViewerController:
                 pass
             self._timecourse_window = None
             self._timecourse_plot = None
-            self._clear_timecourse_cache()
+            self._clear_timecourse()
 
         win.protocol("WM_DELETE_WINDOW", _on_close)
         return win
@@ -1712,14 +1619,7 @@ class ViewerController:
             idx = int(round(x_value))
         except Exception:
             return
-        total_frames = self._viewer_frames
-        data = self._timecourse_cache_data
-        if data is not None:
-            try:
-                if data.ndim >= 4:
-                    total_frames = int(data.shape[3])
-            except Exception:
-                pass
+        total_frames = max(int(self._viewer_frames), int(self._timecourse_frames or 0))
         if total_frames <= 0:
             return
         if idx < 0:
@@ -1771,16 +1671,10 @@ class ViewerController:
         except Exception:
             PlotMeta = None
         vol = self._viewer_volume
-        data = self._timecourse_cache_data
-        if data is None:
-            vol = self._viewer_volume
-            if vol is None:
-                self._timecourse_plot.set_message("No data")
-                return
-            data = np.asarray(vol)
-        if data.ndim < 4:
-            self._timecourse_plot.set_message("Timecourse requires 4D data.")
+        if vol is None:
+            self._timecourse_plot.set_message("No data")
             return
+        data = np.asarray(vol)
         if indices is None:
             indices = (
                 int(self.state.viewer.x_index),
@@ -1788,22 +1682,31 @@ class ViewerController:
                 int(self.state.viewer.z_index),
             )
         xi, yi, zi = indices
-        extra_indices = self.state.viewer.extra_indices or []
-        slicer: list[slice | int] = [xi, yi, zi, slice(None)]
-        if data.ndim > 4:
-            for i in range(4, data.ndim):
-                idx = extra_indices[i - 4] if (i - 4) < len(extra_indices) else 0
-                slicer.append(int(idx))
-        try:
-            series = data[tuple(slicer)]
-        except Exception:
-            self._timecourse_plot.set_message("Timecourse unavailable.")
-            return
-        try:
-            y = np.asarray(series).astype(float)
-        except Exception:
-            self._timecourse_plot.set_message("Timecourse unavailable.")
-            return
+        if data.ndim >= 4 and int(data.shape[3]) > 1:
+            # main already has every frame (for example a hook's full output): read it here
+            extra_indices = self.state.viewer.extra_indices or []
+            slicer: list[slice | int] = [xi, yi, zi, slice(None)]
+            if data.ndim > 4:
+                for i in range(4, data.ndim):
+                    idx = extra_indices[i - 4] if (i - 4) < len(extra_indices) else 0
+                    slicer.append(int(idx))
+            try:
+                y = np.asarray(data[tuple(slicer)]).astype(float)
+            except Exception:
+                self._timecourse_plot.set_message("Timecourse unavailable.")
+                return
+        else:
+            if int(self._viewer_frames) <= 1:
+                self._timecourse_plot.set_message("Timecourse requires 4D data.")
+                return
+            # main holds one frame: the worker answers from the data it holds (C9)
+            key = self._timecourse_key((int(xi), int(yi), int(zi)))
+            if self._timecourse_series is None or self._timecourse_series[0] != key:
+                self._request_timecourse((int(xi), int(yi), int(zi)))
+                if self._timecourse_series is None:
+                    self._timecourse_plot.set_message("Loading timecourse...")
+                return
+            y = np.asarray(self._timecourse_series[1], dtype=float)
         if y.ndim != 1:
             y = y.reshape(-1)
         x = list(range(len(y)))

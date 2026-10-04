@@ -1,4 +1,4 @@
-"""WI-0076: a failing hook must not block the others; Timecourse files follow viewer.cache.path."""
+"""WI-0076: a failing hook must not block the others; the cache folder follows viewer.cache.path."""
 
 import logging
 from pathlib import Path
@@ -61,21 +61,20 @@ def _controller(tmp_path):
     return controller
 
 
+# WI-0072 (C9): the Timecourse no longer writes a file, so these two tests now check only
+# the folder the exit prompt uses (they also checked the Timecourse file path before).
 @pytest.mark.parametrize("relative", [True, False])
-def test_timecourse_file_follows_viewer_cache_path(monkeypatch, tmp_path, relative):
+def test_cache_folder_follows_viewer_cache_path(monkeypatch, tmp_path, relative):
     target = tmp_path / "elsewhere"
     value = "mycache" if relative else str(target)
     root = _use_config(monkeypatch, tmp_path, "path: %s" % value)
     expected = (root / "mycache") if relative else target
-    got = Path(_controller(tmp_path)._resolve_timecourse_cache_path())
-    assert viewer_config.resolve_cache_dir() == expected
-    assert expected in got.parents
-    assert got.suffix == ".npy"
+    got = viewer_config.resolve_cache_dir()
+    assert got == expected
     assert not str(got).startswith(str(Path.home() / ".brkraw"))
+    assert not hasattr(_controller(tmp_path), "_resolve_timecourse_cache_path")
 
 
-def test_timecourse_file_defaults_to_config_folder_cache(monkeypatch, tmp_path):
+def test_cache_folder_defaults_to_config_folder_cache(monkeypatch, tmp_path):
     root = _use_config(monkeypatch, tmp_path, "")
-    got = Path(_controller(tmp_path)._resolve_timecourse_cache_path())
     assert viewer_config.resolve_cache_dir() == root / "cache"
-    assert root / "cache" in got.parents

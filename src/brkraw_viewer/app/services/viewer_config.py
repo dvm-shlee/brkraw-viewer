@@ -27,10 +27,11 @@ def _default_registry_columns() -> List[Dict[str, Any]]:
 def default_viewer_config() -> Dict[str, Any]:
     return {
         "cache": {
-            # Ask before loading a scan whose 2dseq is larger than this many MB; 0 = never ask.
-            # Default 600 MB (WI-0069, D-0094): an 8 GB laptop opens a 500 MB 2dseq without asking
-            # and is asked before a 1 GB one.
-            "memory_limit_mb": 600,
+            # Ask before a load that would make the data held for all layers larger than this
+            # many MB; 0 = never ask. Default 1536 MB (D-0095 3, WI-0072 C9): with the brkraw
+            # read fix (WI-0070) a load peaks at about 1.1x its size in a folder, so an 8 GB
+            # laptop opens a 1 GB 2dseq when little else is held. Was 600 MB per load (WI-0069).
+            "memory_limit_mb": 1536,
         },
         "registry": {
             "path": "viewer/registry.jsonl",
@@ -45,8 +46,8 @@ def default_viewer_config() -> Dict[str, Any]:
 def resolve_cache_dir() -> Path:
     """Folder named by ``viewer.cache.path``; ``cache`` in the config folder when empty.
 
-    Relative paths are taken from the BrkRaw config folder. The exit prompt and the
-    Timecourse temporary files both use this one folder (WI-0076).
+    Relative paths are taken from the BrkRaw config folder. The exit prompt uses this
+    folder (WI-0076); since WI-0072 the Timecourse no longer writes files here.
     """
     root = resolve_root(None)
     try:

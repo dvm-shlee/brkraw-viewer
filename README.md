@@ -165,18 +165,18 @@ archives using `Load` (folder or archive file).
 - Config tab: edit, back up and reset the BrkRaw `config.yaml` in the app.
 - Memory notice: before the Viewer tab loads a scan, the viewer estimates the
   size of its `2dseq` from `visu_pars` and asks first when it is larger than
-  `viewer.cache.memory_limit_mb` (default 600 MB). See `docs/user/config.md`.
+  `viewer.cache.memory_limit_mb` (default 1536 MB for all data held). See `docs/user/config.md`.
 
 ## Known limitations
 
-- The Viewer tab shows a single image volume. Layer composition, ROI statistics
-  and label editing are planned and are not available in this version.
-- Brightness is scaled for each displayed slice (1st to 99th percentile of that
-  slice), so brightness changes when you move through slices, and there is no
-  window/level control.
-- The worker process keeps the whole `2dseq` of the selected scan in memory so
-  that changing the frame is fast. It also keeps the loader of every dataset
-  opened earlier until the viewer is closed.
+- The Viewer tab shows a single image volume. The layer core (grids, resampling,
+  layer composition, ROI statistics) is in `brkraw_viewer.core`, but the tab has no
+  controls for extra layers or ROIs yet; label editing is planned.
+- Brightness is one range per frame (1st to 99th percentile of the whole frame), the
+  same on every slice; there is no window/level control yet.
+- When a whole scan has been read, the worker process keeps that one copy so frames
+  and timecourses are fast, and frees it when another scan is selected. It keeps the
+  loader of every dataset opened earlier until the viewer is closed.
 - Viewer hooks add a panel in the Extensions tab; there is no supported way for a
   hook to draw on the Viewer tab (see `docs/dev/hooks.md`).
 

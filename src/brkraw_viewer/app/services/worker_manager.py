@@ -11,8 +11,8 @@ from ..workers.protocol import (
     ConvertResult,
     LoadVolumeRequest,
     LoadVolumeResult,
-    TimecourseCacheRequest,
-    TimecourseCacheResult,
+    TimecourseRequest,
+    TimecourseResult,
     RegistryRequest,
     RegistryResult,
 )
@@ -26,7 +26,7 @@ class WorkerManager:
         *,
         on_convert_result: Optional[Callable[[ConvertResult], None]] = None,
         on_volume_result: Optional[Callable[[LoadVolumeResult], None]] = None,
-        on_timecourse_cache_result: Optional[Callable[[TimecourseCacheResult], None]] = None,
+        on_timecourse_result: Optional[Callable[[TimecourseResult], None]] = None,
         on_registry_result: Optional[Callable[[RegistryResult], None]] = None,
     ) -> None:
         self._input_queue: multiprocessing.Queue = multiprocessing.Queue()
@@ -36,7 +36,7 @@ class WorkerManager:
         self._running = False
         self._on_convert_result = on_convert_result
         self._on_volume_result = on_volume_result
-        self._on_timecourse_cache_result = on_timecourse_cache_result
+        self._on_timecourse_result = on_timecourse_result
         self._on_registry_result = on_registry_result
 
     @property
@@ -69,7 +69,7 @@ class WorkerManager:
         self._running = False
         logger.info("Worker stopped.")
 
-    def submit(self, request: ConvertRequest | LoadVolumeRequest | TimecourseCacheRequest | RegistryRequest) -> None:
+    def submit(self, request: ConvertRequest | LoadVolumeRequest | TimecourseRequest | RegistryRequest) -> None:
         if not self._running:
             self.start()
         self._input_queue.put(request)
@@ -91,9 +91,9 @@ class WorkerManager:
             if self._on_volume_result:
                 self._on_volume_result(result)
             return
-        if isinstance(result, TimecourseCacheResult):
-            if self._on_timecourse_cache_result:
-                self._on_timecourse_cache_result(result)
+        if isinstance(result, TimecourseResult):
+            if self._on_timecourse_result:
+                self._on_timecourse_result(result)
             return
         if isinstance(result, RegistryResult):
             if self._on_registry_result:

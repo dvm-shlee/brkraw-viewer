@@ -55,6 +55,11 @@ def test_map_indices_snaps_to_multiples_of_half_only_within_tolerance():
     big = np.eye(4)
     big[2, 3] = 2e-6  # beyond the tolerance, not snapped
     assert rs.map_indices(big, np.array([[0.0, 0.0, 1.0]]))[0, 2] != 1.0
+    # the boundary itself (wi-0072-choi-1 finding 7): 0.9e-6 snaps, 1.1e-6 does not
+    near = np.eye(4)
+    near[0, 3], near[1, 3] = 0.9e-6, 0.5 + 1.1e-6
+    out = rs.map_indices(near, np.array([[2.0, 2.0, 0.0]]))
+    assert out[0, 0] == 2.0 and out[0, 1] != 2.5
 
 
 def test_half_integer_tie_under_float_noise_rounds_half_up():

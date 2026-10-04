@@ -154,6 +154,42 @@ def test_label_layer_nearest_palette_and_background(ctrl):
     assert ctrl._layers.get("layer-1").interpolation == "nearest"
 
 
+def test_label_layer_hidden_values_and_rules_reach_the_view(ctrl):
+    # wi-0072-choi-1 finding 3: the controller must apply the layer's transparency to labels
+    raw = raw_volume()
+    load(ctrl, raw)
+    lab = np.zeros(raw.shape, dtype=np.uint16)
+    lab[0:2, :, :] = 1
+    lab[2:4, :, :] = 2
+    lab[4:6, :, :] = 3
+    lid = ctrl._add_array_layer(lab, RAW_AFFINE, name="labels", kind="label", transparency={"values": [2]})
+    disp_lab, _ = reorient_to_ras(lab, RAW_AFFINE)
+    zi = ctrl.state.viewer.z_index
+    shown = disp_lab[:, :, zi].T
+    (rgb, a), = ctrl._view.calls[-1][1]["layers"]["xy"]
+    np.testing.assert_array_equal(a > 0, np.isin(shown, [1, 3]))  # label 2 hidden
+    ctrl._layers.update(lid, transparency={"below": 3})
+    ctrl._render_viewer_views()
+    (rgb, a), = ctrl._view.calls[-1][1]["layers"]["xy"]
+    np.testing.assert_array_equal(a > 0, shown == 3)  # labels below 3 hidden
+
+
+def test_array_layers_count_in_the_load_budget(ctrl):
+    sent = []
+    ctrl._worker.submit = sent.append  # keep the manager (its queues) alive; no process starts
+    ctrl.state.dataset.path = Path("study")
+    ctrl.state.dataset.selected_scan_id = 1
+    ctrl.state.dataset.selected_reco_id = 1
+    ctrl._resolve_cycle_frames = lambda: 1
+    raw = raw_volume()
+    load(ctrl, raw)
+    ctrl._request_viewer_volume()
+    assert sent[-1].other_held_bytes == 0
+    ctrl._add_array_layer(raw, RAW_AFFINE, name="a")  # 840 bytes held by main
+    ctrl._request_viewer_volume()
+    assert sent[-1].other_held_bytes == raw.nbytes
+
+
 def test_other_space_is_refused_and_a_space_change_drops_layers(ctrl):
     raw = raw_volume()
     load(ctrl, raw)

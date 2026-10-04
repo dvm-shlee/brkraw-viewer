@@ -54,6 +54,9 @@ class LoadVolumeRequest:
     # (path, scan_id, reco_id) of the layers still shown. The worker frees the data it holds
     # for any other reco before loading (C9). None keeps everything (the old behaviour).
     keep: Optional[Tuple[Tuple[str, int, int], ...]] = None
+    # Bytes the main process holds for layers it owns (arrays given in main, C2 "array");
+    # counted in the same total as what the worker holds (C9).
+    other_held_bytes: int = 0
 
 
 @dataclass(frozen=True)

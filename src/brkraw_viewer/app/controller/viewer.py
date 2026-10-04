@@ -35,7 +35,7 @@ from ..workers.protocol import (
 from brkraw import api as brkapi
 from brkraw.api.types import SubjectType, SubjectPose, AffineSpace
 from brkraw_viewer.utils.orientation import reorient_to_ras, ras_display_affine
-from brkraw_viewer.core.composite import label_rgba, layer_rgba
+from brkraw_viewer.core.composite import label_rgba, layer_rgba, transparency_mask
 from brkraw_viewer.core.layers import Layer, LayerStack
 from brkraw_viewer.core.resample import Grid, grid_matrix, sample_slice
 from brkraw_viewer.core.window import default_window
@@ -116,6 +116,7 @@ class ViewerController:
         self._viewer_space_listeners: list[Callable[[str], None]] = []
         self._frame_cache: "OrderedDict[int, dict]" = OrderedDict()
         self._frame_cache_limit = 8
+        self._frame_cache_bytes_limit = 64 * 1024 * 1024  # recent frames besides the shown one (C9)
         self._pending_frame_requests: dict[str, int] = {}
         self._frame_request_after_id: Optional[str] = None
         self._convert_hook_enabled: bool = True
@@ -270,7 +271,13 @@ class ViewerController:
                 "slicepacks": self._viewer_slicepacks,
                 "res": self._viewer_res,
             }
-            while len(self._frame_cache) > self._frame_cache_limit:
+            # C9 (WI-0072): besides the shown frame, main keeps recent frames only while they
+            # are small (WI-0068 speed for many small frames), never more than 64 MB of them.
+            while len(self._frame_cache) > 1 and (
+                len(self._frame_cache) > self._frame_cache_limit
+                or self._frame_cache_nbytes() - self._frame_entry_nbytes(next(reversed(self._frame_cache.values())))
+                > self._frame_cache_bytes_limit
+            ):
                 self._frame_cache.popitem(last=False)
         else:
             self._frame_cache.clear()
@@ -278,6 +285,14 @@ class ViewerController:
         if self._view is not None:
             self._view.set_viewer_controls_enabled(True)
             self._view.set_status("Volume loaded.")
+
+    @staticmethod
+    def _frame_entry_nbytes(entry: dict) -> int:
+        raw = entry.get("raw")
+        return int(getattr(raw, "nbytes", 0) or 0)
+
+    def _frame_cache_nbytes(self) -> int:
+        return sum(self._frame_entry_nbytes(e) for e in self._frame_cache.values())
 
     def _memory_key(self) -> tuple:
         return (
@@ -326,6 +341,10 @@ class ViewerController:
             # C9 (WI-0072): the viewer shows one scan layer, so the worker keeps only the
             # reco being loaded and frees what it holds for any other.
             "keep": (key,),
+            # layers whose data main holds count in the same total (C9)
+            "other_held_bytes": sum(
+                int(lay.nbytes) for lay in (getattr(self, "_layers", None) or []) if lay.source == "array"
+            ),
         }
 
     def _on_timecourse_result(self, result: TimecourseResult) -> None:
@@ -667,7 +686,16 @@ class ViewerController:
                 if transpose:
                     values = values.T
                 if layer.kind == "label":
-                    rgb, a = label_rgba(values, colors=self._label_colors(layer, data), alpha=layer.alpha)
+                    rules = dict(layer.transparency or {})
+                    hidden = {int(v) for v in rules.pop("values", [])}
+                    rgb, a = label_rgba(
+                        values,
+                        colors=self._label_colors(layer, data),
+                        alpha=layer.alpha,
+                        hidden_labels=hidden or None,
+                    )
+                    if rules:  # other C4 rules (zero, below, ...) on label values too
+                        a = np.where(transparency_mask(values, rules), np.float32(0.0), a).astype(np.float32)
                 else:
                     vmin, vmax = self._layer_window(layer, frame, vol3d)
                     rgb, a = layer_rgba(

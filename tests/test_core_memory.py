@@ -104,6 +104,70 @@ def test_main_does_not_copy_the_frame_when_a_volume_arrives(monkeypatch, tmp_pat
     assert peak < 0.2 * frame.nbytes, (peak, frame.nbytes)
 
 
+def test_map_shared_array_fallback_copies_once_and_still_removes_the_name(monkeypatch):
+    # wi-0072-choi-1 finding 7: the branch for a Python whose SharedMemory lacks the parts
+    from brkraw_viewer.app.workers import shm as shm_module
+
+    real = shared_memory.SharedMemory
+
+    class NoInternals(real):  # type: ignore[misc, valid-type]
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self._keep_mmap = self._mmap
+            self._mmap = None  # looks like a Python without the expected attribute
+
+        def close(self):
+            self._mmap = self._keep_mmap
+            super().close()
+
+    monkeypatch.setattr(shm_module.multiprocessing.shared_memory, "SharedMemory", NoInternals)
+    src = np.arange(60, dtype=np.int16).reshape(3, 4, 5)
+    name = create_shared_array(src)
+    arr = map_shared_array(name, src.shape, str(src.dtype))
+    monkeypatch.setattr(shm_module.multiprocessing.shared_memory, "SharedMemory", real)
+    assert np.array_equal(arr, src) and arr.flags.owndata  # one copy, as before
+    assert not _shm_exists(name)
+
+
+def test_main_keeps_only_small_recent_frames_besides_the_shown_one(monkeypatch, tmp_path):
+    # wi-0072-choi-1 finding 6: the WI-0068 frame cache is bounded by bytes, not only by count
+    monkeypatch.setattr(viewer_module, "load_viewer_config", lambda root=None: viewer_config.default_viewer_config())
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    ctrl = ViewerController()
+    ctrl._resolve_cycle_frames = lambda: 10
+
+    def arrive(i, shape):
+        frame = np.full(shape, i, dtype=np.float32)
+        name = create_shared_array(frame)
+        job = f"f{i}"
+        ctrl._viewer_job_id = job
+        ctrl._pending_frame_requests[job] = i
+        ctrl._on_volume_result(LoadVolumeResult(job_id=job, shm_name=name, shape=shape, dtype="float32",
+                                                affine=np.eye(4).tolist(), frames=10))
+
+    small = (8, 8, 4, 1)  # 1 KiB
+    for i in range(10):
+        arrive(i, small)
+    assert list(ctrl._frame_cache) == list(range(2, 10))  # count limit 8, as in WI-0068
+    ctrl._frame_cache.clear()
+    ctrl._frame_cache_bytes_limit = 1 * MB
+    big = (64, 64, 32, 1)  # 0.5 MiB
+    for i in range(6):
+        arrive(i, big)
+    assert list(ctrl._frame_cache)[-1] == 5  # the shown frame stays
+    others = ctrl._frame_cache_nbytes() - 64 * 64 * 32 * 4
+    assert others <= 1 * MB and len(ctrl._frame_cache) == 3
+
+
+def test_budget_counts_layers_held_by_main(held_env):
+    small = 32 * 32 * 32 * 4
+    asked = _load(2, memory_limit_bytes=small + 10, other_held_bytes=11)
+    assert asked.needs_confirm and asked.held_bytes == 11
+    ok = _load(2, memory_limit_bytes=small + 10, other_held_bytes=10)
+    assert not ok.needs_confirm
+    release_shared_array(ok.shm_name)
+
+
 # ---- worker: one copy, release, budget, hook size -------------------------------------------
 
 

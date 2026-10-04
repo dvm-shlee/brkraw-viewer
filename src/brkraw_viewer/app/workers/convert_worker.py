@@ -486,6 +486,7 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
 
             expected = _memo(("nbytes",) + reco_key + _hook_key(task.hook_name, hook_args), expected_size)
             held_other = int(sum(v for k, v in _held_recos.items() if k != reco_key))
+            held_other += max(int(task.other_held_bytes or 0), 0)  # array layers held by main
             if isinstance(expected, int) and expected + held_other > task.memory_limit_bytes:
                 logger.info(
                     "Load needs confirmation: %s bytes + %s held > limit %s",

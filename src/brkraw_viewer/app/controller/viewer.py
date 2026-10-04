@@ -35,6 +35,7 @@ from ..workers.protocol import (
 from brkraw import api as brkapi
 from brkraw.api.types import SubjectType, SubjectPose, AffineSpace
 from brkraw_viewer.utils.orientation import reorient_to_ras
+from brkraw_viewer.core.window import default_window
 from brkraw.api.types import (
     SubjectType,
     SubjectPose,
@@ -108,6 +109,10 @@ class ViewerController:
         self._viewer_raw_volume: Optional[object] = None
         self._viewer_raw_affine: Optional[object] = None
         self._viewer_shape: Optional[tuple[int, ...]] = None
+        # C5 (WI-0072): display window per (frame, extra indices) of the volume it was
+        # computed from; reset when the volume object changes.
+        self._viewer_windows: dict[tuple, tuple[float, float]] = {}
+        self._viewer_windows_source: Optional[Callable[[], object]] = None
         self._viewer_res: tuple[float, float, float] = (1.0, 1.0, 1.0)
         self._viewer_fov: Optional[tuple[float, float, float]] = None
         self._viewer_job_id: Optional[str] = None
@@ -512,6 +517,28 @@ class ViewerController:
         else:
             st.extra_indices = []
 
+    def _frame_window(self, vol: object, frame3d: np.ndarray, key: tuple) -> tuple[float, float]:
+        """C5: the display window of one 3D frame, computed once from the whole frame.
+
+        Cached per ``key`` (frame index, extra indices) for as long as ``vol`` is the
+        displayed volume, so every slice and every plane of the frame shares it.
+        """
+        source = self._viewer_windows_source() if self._viewer_windows_source is not None else None
+        if source is not vol:
+            self._viewer_windows = {}
+            try:
+                import weakref
+
+                self._viewer_windows_source = weakref.ref(vol)
+            except TypeError:
+                self._viewer_windows_source = None
+        window = self._viewer_windows.get(key)
+        if window is None:
+            window = default_window(frame3d)
+            if self._viewer_windows_source is not None:
+                self._viewer_windows[key] = window
+        return window
+
     def _render_viewer_views(self) -> None:
         if self._view is None:
             return
@@ -531,6 +558,7 @@ class ViewerController:
         data = np.asarray(vol)
         rgb_candidate = bool(data.ndim == 4 and data.shape[3] == 3)
         extra_dims = list(data.shape[4:]) if data.ndim > 4 else []
+        frame_key: tuple = ()
         if data.ndim >= 4 and not (rgb_candidate and self.state.viewer.rgb_mode):
             frame_idx = min(max(self.state.viewer.frame_index, 0), data.shape[3] - 1)
             slices: list[slice | int] = [slice(None)] * data.ndim
@@ -541,6 +569,7 @@ class ViewerController:
                     idx = extra_indices[i] if i < len(extra_indices) else 0
                     slices[4 + i] = min(max(int(idx), 0), max(int(size) - 1, 0))
             data = data[tuple(slices)]
+            frame_key = tuple(int(s) for s in slices[3:])  # type: ignore[arg-type]
         rgb_eligible = bool(rgb_candidate)
         if not rgb_eligible and self.state.viewer.rgb_mode:
             self.state.viewer.rgb_mode = False
@@ -548,6 +577,10 @@ class ViewerController:
             self._view.set_viewer_rgb_state(enabled=rgb_eligible, active=self.state.viewer.rgb_mode)
         if data.ndim < 3:
             return
+        # C5 (WI-0072): one window for the whole frame, shared by every slice and plane.
+        window: Optional[tuple[float, float]] = None
+        if data.ndim == 3:
+            window = self._frame_window(vol, data, frame_key)
         x, y, z = data.shape[:3]
         xi = min(max(self.state.viewer.x_index, 0), x - 1)
         yi = min(max(self.state.viewer.y_index, 0), y - 1)
@@ -625,6 +658,7 @@ class ViewerController:
             allow_overflow=overflow_blend > 0.0,
             overflow_blend=overflow_blend if overflow_blend > 0.0 else None,
             zoom_scale=zoom,
+            window=window,
         )
         value_text, plot_enabled = _resolve_value_display(
             vol=np.asarray(self._viewer_volume),
@@ -660,6 +694,8 @@ class ViewerController:
         self._viewer_shape = None
         self._viewer_res = (1.0, 1.0, 1.0)
         self._viewer_fov = None
+        self._viewer_windows = {}
+        self._viewer_windows_source = None
         self._clear_frame_cache()
         if self._view is None:
             return

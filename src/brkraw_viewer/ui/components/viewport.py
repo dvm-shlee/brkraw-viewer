@@ -9,6 +9,8 @@ from typing import Callable, Optional, Tuple, Dict, List
 import numpy as np
 from PIL import Image, ImageTk, ImageDraw
 
+from ...core.composite import window_to_index
+from ...core.window import default_window, normalize_window
 from ..assets import load_icon
 from .icon_button import IconButton
 
@@ -191,6 +193,9 @@ class ViewportCanvas(ttk.Frame):
         self._last_title: str = ""
         self._last_res: Tuple[float, float] = (1.0, 1.0)
         self._last_overlay: Optional[OverlaySpec] = None
+        # Display window (vmin, vmax) of the base, computed by the caller once per frame
+        # (layer core C5). None falls back to the slice's own 1-99 percentiles.
+        self._last_window: Optional[Tuple[float, float]] = None
         self._show_crosshair: bool = False
         self._crosshair_rc: Optional[Tuple[int, int]] = None
         self._show_colorbar: bool = False
@@ -255,7 +260,7 @@ class ViewportCanvas(ttk.Frame):
         if np.iscomplexobj(base):
             base = np.abs(base)
 
-        base_rgb = self._base_to_rgb(base)
+        base_rgb = self._base_to_rgb(base, self._last_window)
         if self._last_overlay is not None:
             base_rgb = self._apply_overlay(base_rgb, self._last_overlay)
 
@@ -510,11 +515,13 @@ class ViewportCanvas(ttk.Frame):
         mm_per_px: Optional[float] = None,
         allow_overflow: bool = False,
         zoom_scale: Optional[float] = None,
+        window: Optional[Tuple[float, float]] = None,
     ) -> None:
         self._last_base = np.asarray(base)
         self._last_title = str(title)
         self._last_res = (float(res[0]), float(res[1]))
         self._last_overlay = overlay
+        self._last_window = normalize_window(window)
         self._crosshair_rc = crosshair
         self._focus_rc = focus_rc
         self._use_cursor_focus = bool(use_cursor_focus)
@@ -749,7 +756,7 @@ class ViewportCanvas(ttk.Frame):
             base = np.abs(base)
 
         # Render base -> RGB uint8
-        base_rgb = self._base_to_rgb(base)
+        base_rgb = self._base_to_rgb(base, self._last_window)
 
         # Apply overlay if present -> RGB uint8
         if self._last_overlay is not None:
@@ -901,7 +908,8 @@ class ViewportCanvas(ttk.Frame):
             except Exception:
                 pass
 
-    def _base_to_rgb(self, base: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def _base_to_rgb(base: np.ndarray, window: Optional[Tuple[float, float]] = None) -> np.ndarray:
         if base.ndim == 3 and base.shape[2] == 3:
             arr = np.asarray(base)
             if arr.dtype != np.uint8:
@@ -913,16 +921,13 @@ class ViewportCanvas(ttk.Frame):
             return arr
 
         img = np.asarray(base)
-        try:
-            img = img.astype(np.float32, copy=False)
-        except Exception:
-            img = img.astype(float, copy=False)
-
-        vmin, vmax = np.nanpercentile(img, (1.0, 99.0))
-        if np.isclose(vmin, vmax):
-            vmax = vmin + 1.0
-        norm = np.clip((img - vmin) / (vmax - vmin), 0.0, 1.0)
-        u8 = (norm * 255.0).astype(np.uint8)
+        if np.iscomplexobj(img):
+            img = np.abs(img)
+        # C5: the caller's frame-wide window; without one (older callers) the slice's own.
+        win = normalize_window(window)
+        if win is None:
+            win = default_window(img)
+        u8 = window_to_index(img, win[0], win[1])
         return np.stack([u8, u8, u8], axis=2)
 
     def _apply_overlay(self, base_rgb: np.ndarray, ov: OverlaySpec) -> np.ndarray:

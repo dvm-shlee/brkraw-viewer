@@ -47,6 +47,7 @@ class ViewerTab:
         allow_overflow: bool = False,
         overflow_blend: float | None = None,
         zoom_scale: float | None = None,
+        window: tuple[float, float] | None = None,
     ) -> None:
         self.right.set_views(
             views,
@@ -58,6 +59,7 @@ class ViewerTab:
             allow_overflow=allow_overflow,
             overflow_blend=overflow_blend,
             zoom_scale=zoom_scale,
+            window=window,
         )
 
     def set_subject_enabled(self, enabled: bool) -> None:

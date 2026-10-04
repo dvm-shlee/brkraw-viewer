@@ -318,6 +318,7 @@ class MainWindow(ttk.Frame):
         allow_overflow: bool = False,
         overflow_blend: float | None = None,
         zoom_scale: float | None = None,
+        window: tuple[float, float] | None = None,
     ) -> None:
         tab = self.tabs.get_tab("Viewer")
         target = getattr(tab, "_tab_instance", None)
@@ -332,6 +333,7 @@ class MainWindow(ttk.Frame):
                 allow_overflow=allow_overflow,
                 overflow_blend=overflow_blend,
                 zoom_scale=zoom_scale,
+                window=window,
             )
 
     def set_viewer_subject_enabled(self, enabled: bool) -> None:

@@ -974,9 +974,34 @@ class AddonsTab:
             return False
         return True
 
+    def _editor_conflict(self, key: tuple) -> bool:
+        """True (after telling the user) when the other kind of editor has this file open.
+
+        The general text editor writes the whole file and a rule-section editor writes one
+        section of it, so whichever Save came last would undo the other's change (WI-0104).
+        Two sections of one file do not conflict: each Save re-reads the file.
+        """
+        resolved, category = key
+        for other in list(self._editor_windows):
+            if other[0] != resolved or (other[1] is None) == (category is None):
+                continue
+            if self._show_existing_editor(other):
+                try:
+                    messagebox.showinfo(
+                        "Editor",
+                        f"This file is already open in another editor:\n{resolved}\n\n"
+                        "Close that editor first, then open this one.",
+                    )
+                except Exception:
+                    pass
+                return True
+        return False
+
     def _open_text_editor(self, *, path: Path, title: str) -> None:
         key = self._editor_key(path)
         if self._show_existing_editor(key):
+            return
+        if self._editor_conflict(key):
             return
         win = tk.Toplevel(self.frame)
         self._editor_windows[key] = win
@@ -1017,6 +1042,8 @@ class AddonsTab:
     def _open_rule_section_editor(self, *, path: Path, category: str) -> None:
         key = self._editor_key(path, category)
         if self._show_existing_editor(key):
+            return
+        if self._editor_conflict(key):
             return
         win = tk.Toplevel(self.frame)
         self._editor_windows[key] = win

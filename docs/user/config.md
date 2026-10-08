@@ -53,10 +53,13 @@ worker still holds for other shown data is over `viewer.cache.memory_limit_mb`, 
 whether to load it. If the size cannot be computed, it does not ask. The notice applies
 to the Viewer tab only; Convert does not ask.
 
-- **Yes** is remembered for that scan and reconstruction until you open another
-  dataset, so the viewer does not ask again for it.
-- **No** cancels the load. Selecting the scan or reconstruction again (or pressing
-  Refresh) asks again.
+- **Yes** is remembered for that scan and reconstruction, with the converter hook and
+  hook options that were on, until you open another dataset, so the viewer does not ask
+  again for it. Turning a hook on, or changing its options, is a different load and asks
+  by itself.
+- **No** cancels that load only. Turning the hook off and on again, pressing **Apply** in
+  Hook Options, selecting the scan or reconstruction again, or pressing Refresh asks
+  again; a plain load, or a load with other hook options, is not blocked by an earlier No.
 
 Measured on one 298.6 MB scan (72 x 72 x 32 x 900, int16) with brkraw 0.6.1rc1: showing
 one frame keeps the worker near 80 MB; reading the whole scan for the Timecourse

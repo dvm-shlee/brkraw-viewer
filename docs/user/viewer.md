@@ -67,7 +67,9 @@ window/level control yet (see [Known limitations](#known-limitations)).
   displays the data as that hook returns it, and **Hook Options** edits the hook
   options. This is the converter hook of the scan, not a viewer extension. The options are
   shared with the Convert tab's hook options (kept once per hook): **Apply** in either tab
-  changes them for both.
+  changes them for both, and an open Hook Options window in the other tab shows the new
+  values. If the options window cannot open (the scan has no hook, the hook cannot be
+  loaded, or it has no options), a message says which.
 
 The status line under the views shows space, hook, zoom, RGB, crosshair and slicepack.
 Tabs can be detached into their own window and re-attached from the right-click menu on

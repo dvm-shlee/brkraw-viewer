@@ -418,3 +418,66 @@ def test_released_reco_is_checked_again(held_env, monkeypatch):
     convert_worker._release_reco(("p", 1, 1))
     asked = _load("raw2", memory_limit_bytes=1)
     assert asked.needs_confirm
+
+
+# ---- 5. Addons: general editor and rule-section editor of one file ----------------------------
+
+
+@pytest.fixture
+def addons(monkeypatch):
+    tk = _FakeTk()
+    box = MagicMock(name="messagebox")
+    monkeypatch.setattr(addons_window, "tk", tk)
+    monkeypatch.setattr(addons_window, "ttk", MagicMock(name="ttk"))
+    monkeypatch.setattr(addons_window, "messagebox", box)
+    tab = AddonsTab.__new__(AddonsTab)
+    tab.frame = MagicMock(name="frame")
+    tab._editor_windows = {}
+    tab._bind_text_shortcuts = lambda text: None
+    tab.refresh_installed = lambda: None
+    tab._yaml_rt = lambda: MagicMock()
+    tab.tk, tab.box = tk, box
+    return tab
+
+
+def _rule(tmp_path, name="rule.yaml"):
+    path = tmp_path / name
+    path.write_text("info_spec: []\n", encoding="utf-8")
+    return path
+
+
+def test_rule_section_editor_is_refused_while_the_general_editor_is_open(addons, tmp_path):
+    path = _rule(tmp_path)
+    addons._open_text_editor(path=path, title="Edit rule")
+    general = addons.tk.windows[0]
+    addons._open_rule_section_editor(path=path, category="info_spec")
+    assert len(addons.tk.windows) == 1
+    assert general.lift.called  # the open one comes forward
+    assert addons.box.showinfo.called and "close" in addons.box.showinfo.call_args[0][1].lower()
+
+
+def test_general_editor_is_refused_while_a_rule_section_editor_is_open(addons, tmp_path):
+    path = _rule(tmp_path)
+    addons._open_rule_section_editor(path=path, category="info_spec")
+    section = addons.tk.windows[0]
+    addons._open_text_editor(path=path, title="Edit rule")
+    assert len(addons.tk.windows) == 1
+    assert section.lift.called
+    assert addons.box.showinfo.called
+
+
+def test_the_other_editor_opens_once_the_first_is_closed(addons, tmp_path):
+    path = _rule(tmp_path)
+    addons._open_text_editor(path=path, title="Edit rule")
+    addons.tk.windows[0].destroy()
+    addons._open_rule_section_editor(path=path, category="info_spec")
+    assert len(addons.tk.windows) == 2 and not addons.box.showinfo.called
+
+
+def test_two_categories_of_one_file_and_other_files_stay_independent(addons, tmp_path):
+    path, other = _rule(tmp_path), _rule(tmp_path, "other.yaml")
+    addons._open_rule_section_editor(path=path, category="info_spec")
+    addons._open_rule_section_editor(path=path, category="metadata_spec")
+    addons._open_text_editor(path=other, title="Edit rule")
+    assert len(addons.tk.windows) == 3
+    assert not addons.box.showinfo.called

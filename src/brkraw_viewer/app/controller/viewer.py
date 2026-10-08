@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 from collections import OrderedDict
 from pathlib import Path
@@ -301,6 +302,23 @@ class ViewerController:
             self.state.dataset.selected_reco_id,
         )
 
+    def _memory_choice_key(self, hooked: Optional[bool] = None) -> tuple:
+        """What the user answered "Load it anyway?" for: the reco and the hook with its options.
+
+        The raw 2dseq and a hook's result are different amounts of memory, so a Yes or a No for
+        one is not an answer for the other (WI-0104). The worker's ``keep`` list stays the reco
+        alone (``_memory_key``).
+        """
+        hook = ""
+        if (self._viewer_hook_enabled if hooked is None else hooked) and self._viewer_hook_name:
+            args = json.dumps(self._viewer_hook_args or {}, sort_keys=True, default=repr)
+            hook = f"{self._viewer_hook_name}\n{args}"
+        return self._memory_key() + (hook,)
+
+    def _ask_again_for_current_request(self) -> None:
+        """The user pressed the hook checkbox or Apply: an earlier No for this request no longer holds."""
+        self._memory_declined.discard(self._memory_choice_key())
+
     def _forget_memory_choices(self) -> None:
         self._memory_confirmed.clear()
         self._memory_declined.clear()
@@ -313,7 +331,7 @@ class ViewerController:
         total_bytes = int(result.estimated_bytes or 0) + int(getattr(result, "held_bytes", 0) or 0)
         estimated_mb = float(total_bytes) / (1024 * 1024)
         limit_mb = float(result.limit_bytes or 0) / (1024 * 1024)
-        key = self._memory_key()
+        key = self._memory_choice_key()
         ask = getattr(self._view, "confirm_large_load", None)
         proceed = False
         if callable(ask):
@@ -330,14 +348,14 @@ class ViewerController:
         if self._view is not None:
             self._view.set_status(
                 f"Load cancelled: about {estimated_mb:.0f} MB is over the {limit_mb:.0f} MB limit "
-                "(select the scan again to be asked again)."
+                "(turn the hook off and on, press Apply, or select the scan again to be asked again)."
             )
 
-    def _memory_request_fields(self) -> dict:
+    def _memory_request_fields(self, hooked: Optional[bool] = None) -> dict:
         key = self._memory_key()
         return {
             "memory_limit_bytes": self._memory_limit_bytes,
-            "memory_confirmed": key in self._memory_confirmed,
+            "memory_confirmed": self._memory_choice_key(hooked) in self._memory_confirmed,
             # C9 (WI-0072): the viewer shows one scan layer, so the worker keeps only the
             # reco being loaded and frees what it holds for any other.
             "keep": (key,),
@@ -896,7 +914,7 @@ class ViewerController:
         rid = self.state.dataset.selected_reco_id
         if sid is None or rid is None:
             return
-        if self._memory_key() in self._memory_declined:
+        if self._memory_choice_key() in self._memory_declined:
             return
         job_id = f"viewer-load-{dt.datetime.now().timestamp()}"
         self._viewer_job_id = job_id
@@ -1006,7 +1024,7 @@ class ViewerController:
         rid = self.state.dataset.selected_reco_id
         if sid is None or rid is None:
             return
-        if self._memory_key() in self._memory_declined:
+        if self._memory_choice_key(False) in self._memory_declined:
             return
         job_id = f"viewer-full-{dt.datetime.now().timestamp()}"
         self._viewer_job_id = job_id
@@ -1026,7 +1044,7 @@ class ViewerController:
             flip_x=self.state.viewer.flip_x,
             flip_y=self.state.viewer.flip_y,
             flip_z=self.state.viewer.flip_z,
-            **self._memory_request_fields(),
+            **self._memory_request_fields(False),
         )
         self._worker.submit(req)
         if self._view is not None:
@@ -1644,6 +1662,7 @@ class ViewerController:
                 allow_toggle=not self._viewer_hook_locked,
             )
         self._clear_frame_cache()
+        self._ask_again_for_current_request()
         self._request_viewer_volume()
 
     def on_viewer_flip_change(self, axis: str, enabled: bool) -> None:
@@ -1984,6 +2003,7 @@ class ViewerController:
             convert_enabled = self._convert_hook_enabled and bool(self._viewer_hook_name)
             self._view.set_convert_hook_state(self._viewer_hook_name or "None", convert_enabled, self._viewer_hook_args)
         if self._viewer_hook_enabled:
+            self._ask_again_for_current_request()
             self._request_viewer_volume()
 
     def on_hook_options_apply(self, hook_name: str, hook_args: Optional[dict]) -> None:
@@ -2005,6 +2025,7 @@ class ViewerController:
         if self._view is not None:
             self._view.set_convert_hook_state(self._viewer_hook_name or "None", convert_enabled, self._hook_args_by_name.get(name))
         if self._viewer_hook_enabled and self._viewer_hook_name == name:
+            self._ask_again_for_current_request()
             self._request_viewer_volume()
 
     def on_convert_hook_options_apply(self, hook_name: str, hook_args: Optional[dict]) -> None:

@@ -44,6 +44,59 @@ _held_scans: dict[tuple, object] = {}
 # (later frames); a hook, or other hook options, can return far more than the 2dseq that is
 # already held (WI-0104).
 _held_hook_keys: dict[tuple, set] = {}
+# The converter hook's whole result for each held reco: ``reco_key -> (hook key, result)``, the
+# result as the hook returned it (an array, or a tuple of slicepacks). One per reco: other hook
+# options, or a plain load, let the old one go. The window process gets only the frame it shows
+# (layer core C9, WI-0105; before, every frame of it stayed in main as shared memory, D-0145).
+_held_hook_data: dict[tuple, tuple] = {}
+
+
+def _result_nbytes(result: object) -> int:
+    parts = result if isinstance(result, tuple) else (result,)
+    return int(sum(int(getattr(part, "nbytes", 0) or 0) for part in parts))
+
+
+def _held_bytes(key: tuple, scan: object, reco_id: int) -> int:
+    """Bytes the worker holds for one reco: what brkraw keeps of it plus the hook's whole result."""
+    kept = _kept_nbytes(scan, reco_id)  # type: ignore[arg-type]
+    held = _held_hook_data.get(key)
+    if held is None:
+        return kept
+    try:
+        info = getattr(scan, "image_info", {}).get(reco_id)
+        same = isinstance(info, dict) and info.get("dataobj") is held[1]
+    except Exception:
+        same = False
+    return kept if same else kept + _result_nbytes(held[1])
+
+
+def _drop_hook_result(key: tuple) -> None:
+    """Let go of the hook result held for one reco (and of the hooks recorded as loaded for it)."""
+    _held_hook_data.pop(key, None)
+    plain = _hook_key(None, {})
+    loaded = _held_hook_keys.get(key)
+    if loaded is not None:
+        for hook in [h for h in loaded if h != plain]:
+            loaded.discard(hook)
+
+
+def _hook_block(full: object, task: LoadVolumeRequest) -> tuple:
+    """The part of a hook result main shows: ``(data, frames of the whole result)``.
+
+    Both frame fields None = every frame (the old request of WI-0077). Otherwise the frames
+    ``frame_start`` to ``frame_start + frame_count`` (None = to the end) of the 4th axis, kept as
+    an axis like a frame-wise plain read; a start past the last frame is the last frame. A
+    result without a frame axis is sent whole.
+    """
+    data = cast(np.ndarray, full)
+    if getattr(data, "ndim", 0) < 4:
+        return data, 1
+    total = int(data.shape[3])
+    if task.frame_start is None and task.frame_count is None:
+        return data, total
+    start = min(max(int(task.frame_start or 0), 0), max(total - 1, 0))
+    stop = total if task.frame_count is None else min(start + max(int(task.frame_count), 1), total)
+    return data[:, :, :, start:stop], total
 
 
 def _memo(key: tuple, compute):
@@ -408,6 +461,7 @@ def _release_reco(key: tuple) -> None:
     """Free the data the worker holds for one reco (C9). Never raises."""
     nbytes = _held_recos.pop(key, 0)
     _held_hook_keys.pop(key, None)
+    _held_hook_data.pop(key, None)
     scan = _held_scans.pop(key, None)
     if scan is None:
         return
@@ -579,11 +633,31 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         if num_cycles is not None and num_cycles > 1:
             allow_cycle_slice = True
         data = None
-        # frame_start and frame_count both None = all frames (what the viewer sends when a
-        # converter hook is on, and the slider then only redraws, WI-0077). Never turn that
-        # into one frame: a hook such as sordino honours ``frames=``.
+        hook_total: Optional[int] = None
+        if enable_hook:
+            # The hook is read once, for every frame, and the worker keeps the result; main
+            # gets the frame it shows (``_hook_block``). Never ask the hook for one frame: a
+            # hook such as sordino honours ``frames=`` and the slider would then show it
+            # frozen (WI-0077). A request for the held result (a later frame) reads nothing.
+            held = _held_hook_data.get(reco_key)
+            if held is not None and held[0] == this_hook:
+                data = held[1]
+            else:
+                _drop_hook_result(reco_key)  # one hook result per reco: let the old one go first
+                data = scan.get_dataobj(task.reco_id, **data_kwargs)
+                if data is not None:
+                    _held_hook_data[reco_key] = (this_hook, data)
+        else:
+            _drop_hook_result(reco_key)  # a plain load does not need the hook's result
+        # frame_start and frame_count both None = all frames. Never turn that into one frame.
         want_all_frames = task.frame_start is None and task.frame_count is None
-        if num_cycles is not None and num_cycles > 1 and allow_cycle_slice and not want_all_frames:
+        if (
+            not enable_hook
+            and num_cycles is not None
+            and num_cycles > 1
+            and allow_cycle_slice
+            and not want_all_frames
+        ):
             try:
                 frame_axis = _memo(
                     ("axis",) + reco_key + _hook_key(task.hook_name, hook_args),
@@ -601,7 +675,7 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
                 if "split:" not in str(exc) and "cycle" not in str(exc):
                     raise
                 data = None
-        if data is None:
+        if data is None and not enable_hook:
             data = scan.get_dataobj(
                 task.reco_id,
                 **data_kwargs,
@@ -624,9 +698,13 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
             if idx < 0 or idx >= len(data):
                 idx = 0
             data = data[idx]
+        if enable_hook:
+            data, hook_total = _hook_block(data, task)
         frames = 1
         try:
-            if hasattr(data, "shape") and len(data.shape) >= 4:
+            if hook_total is not None:
+                frames = hook_total  # of the whole hook result, not of the block main gets
+            elif hasattr(data, "shape") and len(data.shape) >= 4:
                 frames = int(data.shape[3])
             elif num_cycles is not None and num_cycles > 1:
                 # Only use num_cycles when data has no explicit frame axis.
@@ -642,8 +720,8 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         )
         logger.debug("Load volume result: shape=%s slicepacks=%s frames=%s", getattr(data, "shape", None), slicepacks, frames)
         affine = _affine_for_request(scan, task, hook_args)
-        # C9: what brkraw keeps for this reco is the one copy the worker holds.
-        _held_recos[reco_key] = _kept_nbytes(scan, task.reco_id)
+        # C9: what brkraw keeps for this reco, and the hook's whole result, are the copies the worker holds.
+        _held_recos[reco_key] = _held_bytes(reco_key, scan, task.reco_id)
         _held_scans[reco_key] = scan
         _held_hook_keys.setdefault(reco_key, set()).add(this_hook)
         shm_name = create_shared_array(data)
@@ -677,18 +755,24 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         )
 
 
-def _timecourse_view(scan: ScanLoader, task: TimecourseRequest) -> np.ndarray:
+def _timecourse_view(scan: ScanLoader, task: TimecourseRequest, held: object = None) -> np.ndarray:
     """The held reco as a view on the displayed (RAS-reoriented) grid; nothing is copied.
 
     brkraw keeps a fully read reco in ``image_info`` (the one copy the worker holds, C9);
     the reorientation is flips and a transpose, so the result is a view of that array.
+    With ``held`` (a converter hook's whole result, WI-0105) that result is used instead and
+    the affine is the hook's.
     """
-    data = scan.get_dataobj(task.reco_id)
+    if held is not None:
+        data = held  # the hook's whole result the worker holds (WI-0105): not read again
+    else:
+        data = scan.get_dataobj(task.reco_id)
     if data is None:
         raise ValueError("No data returned")
     if isinstance(data, tuple):
         idx = int(task.slicepack_index or 0)
         data = data[idx if 0 <= idx < len(data) else 0]
+    hook_args = dict(task.hook_args or {}) if held is not None else {}
     key = (
         "tc-affine",
         task.path,
@@ -701,7 +785,7 @@ def _timecourse_view(scan: ScanLoader, task: TimecourseRequest) -> np.ndarray:
         bool(task.flip_y),
         bool(task.flip_z),
         int(task.slicepack_index or 0),
-    )
+    ) + (_hook_key(task.hook_name, hook_args) if held is not None else ())
 
     def compute():
         affine = _resolve_affine_for_space(
@@ -713,7 +797,7 @@ def _timecourse_view(scan: ScanLoader, task: TimecourseRequest) -> np.ndarray:
             flip_x=task.flip_x,
             flip_y=task.flip_y,
             flip_z=task.flip_z,
-            hook_args={},
+            hook_args=hook_args,
         )
         if isinstance(affine, tuple):
             idx = int(task.slicepack_index or 0)
@@ -768,13 +852,22 @@ def _roi_timecourse(task: TimecourseRequest, view: np.ndarray) -> TimecourseResu
 def _process_timecourse(task: TimecourseRequest, output_queue: multiprocessing.Queue) -> None:
     """One voxel's values over the frames, from the held array (C9: no file, no full copy)."""
     try:
-        loader = _get_loader(task.path)
-        scan = _ensure_hook_state(loader, task.scan_id, enable_hook=False)
-        view = _timecourse_view(scan, task)
         reco_key = (task.path, task.scan_id, task.reco_id)
-        _held_recos[reco_key] = max(_held_recos.get(reco_key, 0), _kept_nbytes(scan, task.reco_id))
+        held = None
+        if task.hook_name:
+            # With a hook on, main shows one frame of the hook's result: answer from the whole
+            # result the worker holds, never by reading the hook or the plain 2dseq again.
+            entry = _held_hook_data.get(reco_key)
+            if entry is None or entry[0] != _hook_key(task.hook_name, task.hook_args):
+                raise ValueError("The hook result is not held any more; reload the scan with the hook on.")
+            held = entry[1]
+        loader = _get_loader(task.path)
+        scan = _ensure_hook_state(loader, task.scan_id, enable_hook=held is not None)
+        view = _timecourse_view(scan, task, held)
+        if held is None:
+            _held_hook_keys.setdefault(reco_key, set()).add(_hook_key(None, {}))  # it also holds the plain 2dseq
+        _held_recos[reco_key] = max(_held_recos.get(reco_key, 0), _held_bytes(reco_key, scan, task.reco_id))
         _held_scans[reco_key] = scan
-        _held_hook_keys.setdefault(reco_key, set()).add(_hook_key(None, {}))  # it also holds the plain 2dseq
         if view.ndim < 4:
             raise ValueError("Timecourse requires 4D data.")
         while view.ndim > 4:  # axes after the 4th: the requested index, as for a voxel

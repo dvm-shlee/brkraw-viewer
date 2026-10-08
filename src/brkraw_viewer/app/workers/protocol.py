@@ -112,6 +112,10 @@ class TimecourseRequest:
     roi_axis: Optional[int] = None
     roi_index: int = 0
     roi_mask: Optional[Any] = None
+    # With a converter hook on, the answer comes from the hook's whole result the worker holds
+    # (the one loaded with this name and these options, WI-0105); None = the plain 2dseq.
+    hook_name: Optional[str] = None
+    hook_args: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)

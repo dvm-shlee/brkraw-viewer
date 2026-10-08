@@ -425,9 +425,12 @@ def test_timecourse_reading_the_plain_data_is_remembered_next_to_the_hook_result
     out = _Queue()
     convert_worker._process_timecourse(TimecourseRequest(job_id="tc", path="p", scan_id=1, reco_id=1), out)
     assert out.items[0].error is None  # it read the plain data and holds it too
-    # both are now loaded: neither the plain request nor the hook request is asked again
+    # the plain data is held now, so the plain request is not asked again
     assert not _load("raw", memory_limit_bytes=1).needs_confirm
-    assert not _load("hooked2", memory_limit_bytes=1, **same).needs_confirm
+    # WI-0105: the worker holds one hook result per reco and lets it go when the plain data is
+    # loaded, so the hook request is a new load again and is asked (before, main held the hook
+    # result and the worker only remembered its name)
+    assert _load("hooked2", memory_limit_bytes=1, **same).needs_confirm
 
 
 def test_released_reco_is_checked_again(held_env, monkeypatch):

@@ -236,7 +236,18 @@ class ViewerController:
         data = cast(np.ndarray, data)
         self._viewer_volume = data
         self._viewer_shape = data.shape if hasattr(data, "shape") else None
-        if prev_empty or prev_shape != data.shape:
+        # A 3-frame hook result seen one frame at a time or as 3 channels is the same grid: do not
+        # move the crosshair when RGB is turned on or off (WI-0105, D-0175).
+        same_grid = bool(
+            self._viewer_hook_enabled
+            and self._viewer_frames == 3
+            and prev_frames == 3
+            and prev_shape is not None
+            and len(prev_shape) == 4
+            and len(data.shape) == 4
+            and tuple(prev_shape[:3]) == tuple(data.shape[:3])
+        )
+        if prev_empty or (prev_shape != data.shape and not same_grid):
             self._reset_viewer_indices_from_shape(center=True)
         else:
             self._update_viewer_indices_from_shape()
@@ -809,10 +820,18 @@ class ViewerController:
             self.state.viewer.slicepack_index,
         )
         data = np.asarray(vol)
-        rgb_candidate = bool(data.ndim == 4 and data.shape[3] == 3)
+        if self._viewer_hook_enabled:
+            # A hook result with exactly 3 frames may be colour, though main holds one frame of it;
+            # the 3 frames come from the worker while RGB is on (WI-0105, D-0175). A 3-frame block
+            # of a longer result is not colour.
+            rgb_candidate = bool(self._viewer_frames == 3 and data.ndim == 4 and data.shape[3] in (1, 3))
+        else:
+            rgb_candidate = bool(data.ndim == 4 and data.shape[3] == 3)
+        # main has the 3 channels the colour draw needs; until then the plain frame is drawn
+        rgb_on = bool(rgb_candidate and data.shape[3] == 3 and self.state.viewer.rgb_mode)
         extra_dims = list(data.shape[4:]) if data.ndim > 4 else []
         frame_key: tuple = ()
-        if data.ndim >= 4 and not (rgb_candidate and self.state.viewer.rgb_mode):
+        if data.ndim >= 4 and not rgb_on:
             frame_idx = min(max(self.state.viewer.frame_index, 0), data.shape[3] - 1)
             slices: list[slice | int] = [slice(None)] * data.ndim
             slices[3] = frame_idx
@@ -839,7 +858,7 @@ class ViewerController:
         yi = min(max(self.state.viewer.y_index, 0), y - 1)
         zi = min(max(self.state.viewer.z_index, 0), z - 1)
         frames = self._viewer_frames
-        if rgb_eligible and self.state.viewer.rgb_mode:
+        if rgb_on:
             frames = 1
         slicepacks = self._viewer_slicepacks
         self._view.set_viewer_ranges(
@@ -854,7 +873,7 @@ class ViewerController:
             extra_dims=extra_dims,
             extra_indices=self.state.viewer.extra_indices,
         )
-        if data.ndim == 4 and data.shape[3] == 3 and self.state.viewer.rgb_mode:
+        if data.ndim == 4 and data.shape[3] == 3 and rgb_on:
             img_zy = data[xi, :, :, :]              # (y, z, 3)
             img_xy = data[:, :, zi, :].transpose(1, 0, 2)  # (y, x, 3)
             img_xz = data[:, yi, :, :].transpose(1, 0, 2)  # (z, x, 3)
@@ -904,7 +923,7 @@ class ViewerController:
         # Layers over the scan (C1-C4): layer 0 follows the shown scan; others are sampled
         # on the shown slices only. A failure here must not hide the scan itself.
         layer_views: Optional[dict] = None
-        if not (rgb_eligible and self.state.viewer.rgb_mode):
+        if not rgb_on:
             try:
                 grid = self._display_grid()
                 if grid is not None:
@@ -1004,6 +1023,10 @@ class ViewerController:
             ):
                 frame_start = None
                 frame_count = None
+        if self._viewer_hook_enabled and self.state.viewer.rgb_mode and self._viewer_frames == 3:
+            # RGB on for a 3-frame hook result: main holds the 3 channels only for as long as RGB
+            # is on, and gets them from the worker's held result (WI-0105, D-0175).
+            frame_start, frame_count = 0, 3
         self._pending_frame_requests = {}
         if frame_start is not None and frame_count == 1:
             try:
@@ -1706,6 +1729,9 @@ class ViewerController:
                 pass
         # The same for a converter hook (WI-0105): the worker holds every frame of its result and
         # main shows the frame it was sent.
+        if self._viewer_hook_enabled and self.state.viewer.rgb_mode and self._viewer_frames == 3:
+            self._render_viewer_views()  # colour: main has the 3 channels, no frame to ask for
+            return
         if self._apply_cached_frame(self.state.viewer.frame_index):
             return
         self._schedule_frame_request()
@@ -1823,6 +1849,17 @@ class ViewerController:
 
     def on_viewer_rgb_toggle(self, enabled: bool) -> None:
         self.state.viewer.rgb_mode = bool(enabled)
+        vol = self._viewer_volume
+        if self._viewer_hook_enabled and self._viewer_frames == 3 and vol is not None and np.ndim(vol) == 4:
+            # The worker holds the 3 frames of the hook result; main gets them only while RGB is on.
+            has_three = int(np.shape(vol)[3]) == 3
+            if enabled and not has_three:
+                self._request_viewer_volume()
+                return
+            if not enabled and has_three:
+                self._render_viewer_views()  # the held block is the plain frame meanwhile
+                self._request_viewer_volume()  # one frame again; main lets the other two go
+                return
         self._render_viewer_views()
 
     def on_viewer_zoom_change(self, value: float) -> None:

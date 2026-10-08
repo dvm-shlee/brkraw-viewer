@@ -27,11 +27,11 @@ def _default_registry_columns() -> List[Dict[str, Any]]:
 def default_viewer_config() -> Dict[str, Any]:
     return {
         "cache": {
-            # Ask before a load that would make the data held for all layers larger than this
-            # many MB; 0 = never ask. Default 1536 MB (D-0095 3, WI-0072 C9): with the brkraw
-            # read fix (WI-0070) a load peaks at about 1.1x its size in a folder, so an 8 GB
-            # laptop opens a 1 GB 2dseq when little else is held. Was 600 MB per load (WI-0069).
-            "memory_limit_mb": 1536,
+            # Ask (a warning with continue / cancel) before a load that would make the data held
+            # for all layers larger than this. "auto" (also when the key is missing) = 16 % of
+            # the installed memory, at least 512 MB (D-0169, WI-0104 item 8); a number is in MB
+            # and wins, also when an older config still holds the old 1536; 0 = never ask.
+            "memory_limit_mb": "auto",
         },
         "registry": {
             "path": "viewer/registry.jsonl",

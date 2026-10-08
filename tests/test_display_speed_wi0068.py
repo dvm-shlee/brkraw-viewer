@@ -227,8 +227,8 @@ def test_timecourse_request_is_sent_once_per_voxel_and_old_answers_are_dropped(c
 
 def test_default_cache_settings_are_the_ones_the_code_reads():
     cache = viewer_config.default_viewer_config()["cache"]
-    assert set(cache) == {"memory_limit_mb"}
-    assert cache["memory_limit_mb"] == 1536  # total held by all layers (WI-0072, D-0095 3)
+    assert set(cache) == {"memory_limit_mb"}  # the hook share arrives with WI-0104 item 7
+    assert cache["memory_limit_mb"] == "auto"  # 16 % of the installed memory, at least 512 MB (WI-0104 item 8, D-0169)
 
 
 def test_config_docs_describe_every_default_cache_setting_and_retired_keys():
@@ -246,8 +246,11 @@ def test_memory_limit_setting_is_read_by_the_controller(monkeypatch, tmp_path):
     assert ViewerController()._memory_limit_bytes == 2 * MB
     cfg["cache"]["memory_limit_mb"] = 0
     assert ViewerController()._memory_limit_bytes == 0
-    cfg["cache"]["memory_limit_mb"] = "bad"
-    assert ViewerController()._memory_limit_bytes == 1536 * MB
+    cfg["cache"]["memory_limit_mb"] = "bad"  # not a number and not "auto": the automatic value (WI-0104 item 8)
+    from brkraw_viewer.app.services import memory_limit
+
+    monkeypatch.setattr(memory_limit, "installed_memory", lambda: (10 * 1024 * MB, False))
+    assert ViewerController()._memory_limit_bytes == int(10 * 1024 * MB * 0.16)
 
 
 # ---- 6. notice before loading a big reco: worker side ------------------------------------
@@ -278,7 +281,7 @@ def test_load_above_the_limit_asks_and_reads_nothing(worker_env):
 def test_default_limit_lets_1_gb_open_and_asks_above_1536_mb(worker_env):
     # WI-0072 (D-0095 3): 1536 MB for the total held; with nothing else held a 1 GB scan opens.
     scan, _counts = worker_env
-    limit = viewer_config.default_viewer_config()["cache"]["memory_limit_mb"] * MB
+    limit = 1536 * MB  # a config number (an older config keeps its 1536); the default is now "auto"
     for size_bytes, asks in ((1000 * 1000 * 1000, False), (1024 * MB, False), (1536 * MB, False), (1538 * MB, True)):
         convert_worker._held_recos.clear()
         convert_worker._meta_cache.clear()
@@ -350,7 +353,7 @@ def _needs_confirm(job_id, estimated=3 * MB, limit=1 * MB):
 def test_request_carries_the_limit(controller):
     controller._request_viewer_volume()
     req = ctrl_submitted[-1]
-    assert req.memory_limit_bytes == 1536 * MB and req.memory_confirmed is False
+    assert req.memory_limit_bytes == controller._memory_limit_bytes > 0 and req.memory_confirmed is False
     assert req.keep == ((str(controller.state.dataset.path), 3, 1),)  # C9: only this reco stays held
 
 

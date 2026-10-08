@@ -165,7 +165,7 @@ archives using `Load` (folder or archive file).
 - Config tab: edit, back up and reset the BrkRaw `config.yaml` in the app.
 - Memory notice: before the Viewer tab loads a scan, the viewer estimates the
   size of its `2dseq` from `visu_pars` and asks first when it is larger than
-  `viewer.cache.memory_limit_mb` (default 1536 MB for all data held). See `docs/user/config.md`.
+  `viewer.cache.memory_limit_mb` (default `auto`: 16 % of the installed memory, at least 512 MB). See `docs/user/config.md`.
 
 ## Known limitations
 

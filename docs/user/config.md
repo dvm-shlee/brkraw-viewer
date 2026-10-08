@@ -10,7 +10,7 @@ that file, so teams can share one configuration.
 ```yaml
 viewer:
   cache:
-    memory_limit_mb: 1536   # ask when the data held would pass this many MB; 0 = never ask
+    memory_limit_mb: auto   # auto = 16 % of the installed memory (at least 512 MB); a number = MB; 0 = never ask
     # path: cache           # optional, see "Disk cache" below
   registry:
     path: viewer/registry.jsonl
@@ -20,7 +20,9 @@ viewer:
     popup: true             # read at start-up and on Refresh; has no effect in this version
 ```
 
-- `viewer.cache.memory_limit_mb`: the memory notice below.
+- `viewer.cache.memory_limit_mb`: the memory notice below. Missing or `auto`: 16 % of
+  the installed memory, at least 512 MB. A number is used as written (an older config
+  that still holds `1536` keeps that number); `0` never asks.
 - `viewer.registry.path`: the registry file, relative to the BrkRaw config folder
   unless it is absolute. A launch with `--registry`, the
   `BRKRAW_VIEWER_REGISTRY_PATH` variable or `viewer-registry -t` uses another file
@@ -68,13 +70,20 @@ the main window process does not copy the frames it receives. Reading every fram
 once (a converter hook) briefly needs about twice the data while the frames are handed
 to the window.
 
-The default is 1536 MB for everything held, chosen for a laptop with 8 GB of memory:
-a 1 GB 2dseq opens without asking when little else is held. Earlier viewer versions
-used 600 MB per scan, because with brkraw before 0.6.1 reading needed 3 to 5 times the
-data size. Set it
-from your computer's memory and your largest scan. `cache.enabled` and `cache.max_items`
-were never read by the viewer; they are removed from the defaults and ignored if they
-are still in an existing `config.yaml`.
+The limit is `auto` unless you set a number: 16 % of the memory installed in the computer
+(8 GB gives 1,310 MB, 16 GB gives 2,621 MB), but never less than 512 MB. The viewer reads
+the installed memory when it starts and on Refresh (Windows: `GlobalMemoryStatusEx`; if the
+memory cannot be read, 4 GB is assumed and the notice says so). A number in
+`viewer.cache.memory_limit_mb` always wins over the automatic value, including the `1536`
+that earlier versions wrote as the default; `0` turns the question off. Earlier viewer
+versions used 600 MB per scan, because with brkraw before 0.6.1 reading needed 3 to 5 times
+the data size.
+
+Going over the limit is a warning, not a stop: the notice says how much would be held, the
+limit and where the limit comes from (the percentage and the installed memory, or your
+setting, and the 512 MB minimum when it applies). **Yes** continues, **No** cancels that load.
+`cache.enabled` and `cache.max_items` were never read by the viewer; they are removed from
+the defaults and ignored if they are still in an existing `config.yaml`.
 
 ## Disk cache
 

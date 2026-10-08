@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import inspect
 import json
 import re
 from collections import OrderedDict
@@ -18,6 +19,7 @@ from .helper import (
 from .dataset import DatasetController
 from ..protocols import ViewerView, TaskPopup
 from ..state import AppState
+from ..services import memory_limit as _memory
 from ..services.viewer_config import load_viewer_config, resolve_cache_dir
 from ..services.worker_manager import WorkerManager
 from ..services.registry import load_registry
@@ -50,18 +52,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MEMORY_LIMIT_MB = 1536  # total held by all layers (D-0095 3, WI-0072); was 600 per load
-
-
-def _memory_limit_bytes_from_config(cfg: dict) -> int:
-    """``viewer.cache.memory_limit_mb`` in bytes; 0 = never ask; bad values use the default."""
-    cache = cfg.get("cache", {}) if isinstance(cfg, dict) else {}
-    value = cache.get("memory_limit_mb", DEFAULT_MEMORY_LIMIT_MB) if isinstance(cache, dict) else DEFAULT_MEMORY_LIMIT_MB
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        value = DEFAULT_MEMORY_LIMIT_MB
-    return max(int(value * 1024 * 1024), 0)
-
-
 class ViewerController:
     def __init__(self, *, dataset: Optional[DatasetController] = None) -> None:
         self.state = AppState()
@@ -78,7 +68,7 @@ class ViewerController:
         self._popups: dict[str, TaskPopup] = {}
         # job_id -> (dataset path, scan, reco, output paths) of conversions queued or running (WI-0079).
         self._convert_pending: dict[str, tuple] = {}
-        self._memory_limit_bytes = _memory_limit_bytes_from_config(cfg)
+        self._apply_memory_config(cfg)
         # (path, scan, reco) the user chose to load / not to load although over the limit.
         self._memory_confirmed: set[tuple] = set()
         self._memory_declined: set[tuple] = set()
@@ -295,6 +285,40 @@ class ViewerController:
     def _frame_cache_nbytes(self) -> int:
         return sum(self._frame_entry_nbytes(e) for e in self._frame_cache.values())
 
+    def _apply_memory_config(self, cfg: dict) -> None:
+        """Read the memory settings of ``viewer.cache`` (WI-0104 items 8 and 7)."""
+        cache = cfg.get("cache", {}) if isinstance(cfg, dict) else {}
+        if not isinstance(cache, dict):
+            cache = {}
+        installed = _memory.installed_memory()
+        self._memory_limit = _memory.resolve_memory_limit(cache.get("memory_limit_mb"), installed)
+        self._memory_limit_bytes = self._memory_limit.limit_bytes
+
+    @staticmethod
+    def _accepts_message(func: Callable) -> bool:
+        try:
+            params = inspect.signature(func).parameters
+        except (TypeError, ValueError):
+            return False
+        return "message" in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+    def _large_load_message(self, result: LoadVolumeResult) -> str:
+        """What the notice says: the sizes, the limit and where the limit comes from."""
+        mb = 1024 * 1024
+        image = int(result.estimated_bytes or 0)
+        held = int(getattr(result, "held_bytes", 0) or 0)
+        held_text = f" plus {held / mb:,.0f} MB already held" if held else ""
+        total = (image + held) / mb
+        lines = [
+            f"With this scan the viewer would hold about {total:,.0f} MB "
+            f"(this data {image / mb:,.0f} MB{held_text}), over the {result.limit_bytes / mb:,.0f} MB limit.",
+            _memory.describe_limit(self._memory_limit),
+            "",
+            "Loading keeps the data in memory and needs somewhat more while loading.",
+            "Continue loading anyway? (No cancels this load.)",
+        ]
+        return "\n".join(lines)
+
     def _memory_key(self) -> tuple:
         return (
             str(self.state.dataset.path),
@@ -336,7 +360,10 @@ class ViewerController:
         proceed = False
         if callable(ask):
             try:
-                proceed = bool(ask(estimated_mb, limit_mb))
+                if self._accepts_message(ask):
+                    proceed = bool(ask(estimated_mb, limit_mb, message=self._large_load_message(result)))
+                else:
+                    proceed = bool(ask(estimated_mb, limit_mb))
             except Exception:
                 proceed = False
         if proceed:
@@ -1457,7 +1484,7 @@ class ViewerController:
 
         cfg = load_viewer_config()
         self.state.settings.worker_popup = bool(cfg.get("worker", {}).get("popup", True))
-        self._memory_limit_bytes = _memory_limit_bytes_from_config(cfg)
+        self._apply_memory_config(cfg)
 
         if current_path:
             try:

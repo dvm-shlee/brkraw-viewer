@@ -469,19 +469,20 @@ class MainWindow(ttk.Frame):
         except Exception:
             pass
 
-    def confirm_large_load(self, estimated_mb: float, limit_mb: float) -> bool:
-        """Ask whether to load when the data held would go over the memory limit (WI-0068, WI-0072)."""
+    def confirm_large_load(self, estimated_mb: float, limit_mb: float, message: str | None = None) -> bool:
+        """Warn that the data held would go over the memory limit; Yes continues, No cancels.
+
+        ``message`` is the full text from the controller (sizes, the limit and where it comes
+        from, WI-0104 item 8); without it the short text of earlier versions is shown.
+        """
+        text = message or (
+            f"With this scan the viewer would hold about {estimated_mb:,.0f} MB, over the "
+            f"{limit_mb:,.0f} MB limit (viewer.cache.memory_limit_mb).\n\n"
+            "Loading keeps the data in memory and needs somewhat more while loading. "
+            "Load it anyway?"
+        )
         try:
-            return bool(
-                messagebox.askyesno(
-                    "Large data",
-                    f"With this scan the viewer would hold about {estimated_mb:,.0f} MB, over the "
-                    f"{limit_mb:,.0f} MB limit (viewer.cache.memory_limit_mb).\n\n"
-                    "Loading keeps the data in memory and needs somewhat more while loading. "
-                    "Load it anyway?",
-                    parent=self.winfo_toplevel(),
-                )
-            )
+            return bool(messagebox.askyesno("Large data", text, icon="warning", parent=self.winfo_toplevel()))
         except Exception:
             return False
 

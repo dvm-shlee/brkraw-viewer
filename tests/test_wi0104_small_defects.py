@@ -309,3 +309,112 @@ def test_worker_keep_list_is_still_the_reco_alone_not_the_hook(controller):
     controller._viewer_hook_enabled = True
     controller._request_viewer_volume()
     assert _loads()[-1].keep == ((str(controller.state.dataset.path), 4, 1),)
+
+
+# ---- 4. worker: already loaded means this hook and these options -----------------------------
+
+
+class _Queue:
+    def __init__(self):
+        self.items = []
+
+    def put(self, item):
+        self.items.append(item)
+
+
+class _HeldScan:
+    def __init__(self, shape=(32, 32, 32)):
+        self.shape = shape
+        self.image_info = {1: {"num_cycles": 1, "dataobj": None}}
+        self.avail = {
+            1: SimpleNamespace(
+                file_visu_pars={
+                    "VisuCoreSize": [int(np.prod(shape))],
+                    "VisuCoreFrameCount": 1,
+                    "VisuCoreWordType": "_32BIT_FLOAT",
+                }
+            )
+        }
+        self.reads = 0
+
+    def get_dataobj(self, reco_id, **kwargs):
+        info = self.image_info[reco_id]
+        if info.get("dataobj") is None:
+            self.reads += 1
+            self.image_info[reco_id] = dict(info, dataobj=np.ones(self.shape, dtype=np.float32))
+        return self.image_info[reco_id]["dataobj"]
+
+
+@pytest.fixture
+def held_env(monkeypatch):
+    scan = _HeldScan()  # 0.125 MB
+    monkeypatch.setattr(convert_worker, "_get_loader", lambda path: object())
+    monkeypatch.setattr(convert_worker, "_ensure_hook_state", lambda loader, sid, enable_hook: scan)
+    monkeypatch.setattr(convert_worker, "_frame_axis_number", lambda _s, _r: None)
+    monkeypatch.setattr(convert_worker, "_resolve_affine_for_space", lambda _s, **k: np.eye(4))
+    convert_worker._held_recos.clear()
+    convert_worker._held_scans.clear()
+    convert_worker._meta_cache.clear()
+    yield scan
+    convert_worker._held_recos.clear()
+    convert_worker._held_scans.clear()
+    convert_worker._meta_cache.clear()
+
+
+def _hook_module(monkeypatch, scan, sizes):
+    """A hook whose reported output size follows ``sizes[ignore_samples]`` (bytes)."""
+    module = types.ModuleType("fake_wi0104_hook")
+
+    def get_dataobj(scan_, reco_id=None, **kwargs):
+        return np.zeros((2, 2, 2), np.float32)
+
+    def get_dataobj_info(scan_, reco_id=None, **kwargs):
+        return {"nbytes": sizes[kwargs.get("ignore_samples", 0)]}
+
+    get_dataobj.__module__ = module.__name__
+    module.get_dataobj = get_dataobj
+    module.get_dataobj_info = get_dataobj_info
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    scan._converter_hook = {"get_dataobj": get_dataobj}
+
+
+def _load(job, **kwargs):
+    out = _Queue()
+    convert_worker._process_load_volume(LoadVolumeRequest(job_id=job, path="p", scan_id=1, reco_id=1, **kwargs), out)
+    result = out.items[0]
+    if result.shm_name:
+        release_shared_array(result.shm_name)
+    return result
+
+
+def test_raw_data_already_held_does_not_hide_a_big_hook_result(held_env, monkeypatch):
+    _hook_module(monkeypatch, held_env, {0: 5 * MB})
+    first = _load("raw", memory_limit_bytes=4 * MB)  # 0.125 MB: fits, and now it is held
+    assert not first.needs_confirm and ("p", 1, 1) in convert_worker._held_recos
+    hooked = _load("hooked", memory_limit_bytes=4 * MB, hook_name="fake_wi0104", hook_args={"ignore_samples": 0})
+    assert hooked.needs_confirm and hooked.estimated_bytes == 5 * MB
+
+
+def test_a_loaded_hook_result_does_not_hide_a_bigger_one_for_other_options(held_env, monkeypatch):
+    _hook_module(monkeypatch, held_env, {0: MB // 8, 1: 9 * MB})
+    small = _load("small", memory_limit_bytes=4 * MB, hook_name="fake_wi0104", hook_args={"ignore_samples": 0})
+    assert not small.needs_confirm
+    big = _load("big", memory_limit_bytes=4 * MB, hook_name="fake_wi0104", hook_args={"ignore_samples": 1})
+    assert big.needs_confirm and big.estimated_bytes == 9 * MB
+
+
+def test_the_same_request_again_is_not_asked_again(held_env, monkeypatch):
+    _hook_module(monkeypatch, held_env, {0: MB // 8})
+    same = {"hook_name": "fake_wi0104", "hook_args": {"ignore_samples": 0}}
+    assert not _load("a", memory_limit_bytes=MB, **same).needs_confirm  # fits, now loaded
+    for job in ("b", "c"):  # e.g. later frames of the same reco and hook
+        assert not _load(job, memory_limit_bytes=1, **same).needs_confirm
+    assert not _load("raw1", memory_limit_bytes=MB).needs_confirm  # a different request, small enough
+    assert not _load("raw2", memory_limit_bytes=1).needs_confirm  # now held as raw: same request, no ask
+
+
+def test_released_reco_is_checked_again(held_env, monkeypatch):
+    _load("raw", memory_limit_bytes=MB)
+    convert_worker._release_reco(("p", 1, 1))
+    asked = _load("raw2", memory_limit_bytes=1)
+    assert asked.needs_confirm

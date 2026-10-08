@@ -413,6 +413,23 @@ def test_the_same_request_again_is_not_asked_again(held_env, monkeypatch):
     assert not _load("raw2", memory_limit_bytes=1).needs_confirm  # now held as raw: same request, no ask
 
 
+def test_timecourse_reading_the_plain_data_is_remembered_next_to_the_hook_result(held_env, monkeypatch):
+    from brkraw_viewer.app.workers.protocol import TimecourseRequest
+
+    shape = (8, 8, 4, 4)
+    held_env.shape = shape
+    held_env.avail[1].file_visu_pars["VisuCoreSize"] = [int(np.prod(shape))]
+    _hook_module(monkeypatch, held_env, {0: MB // 8})
+    same = {"hook_name": "fake_wi0104", "hook_args": {"ignore_samples": 0}}
+    assert not _load("hooked", memory_limit_bytes=MB, **same).needs_confirm
+    out = _Queue()
+    convert_worker._process_timecourse(TimecourseRequest(job_id="tc", path="p", scan_id=1, reco_id=1), out)
+    assert out.items[0].error is None  # it read the plain data and holds it too
+    # both are now loaded: neither the plain request nor the hook request is asked again
+    assert not _load("raw", memory_limit_bytes=1).needs_confirm
+    assert not _load("hooked2", memory_limit_bytes=1, **same).needs_confirm
+
+
 def test_released_reco_is_checked_again(held_env, monkeypatch):
     _load("raw", memory_limit_bytes=MB)
     convert_worker._release_reco(("p", 1, 1))

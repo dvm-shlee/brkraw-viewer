@@ -39,10 +39,11 @@ _meta_cache: dict[tuple, object] = {}
 _held_recos: dict[tuple, int] = {}
 # The scan objects behind ``_held_recos``, so their data can be freed (C9).
 _held_scans: dict[tuple, object] = {}
-# The hook (name and options, ``_hook_key``) of the request that last loaded each held reco. The
-# size check is skipped only for the same request again (later frames); a hook, or other hook
-# options, can return far more than the 2dseq that is already held (WI-0104).
-_held_hook_keys: dict[tuple, tuple] = {}
+# The hooks (name and options, ``_hook_key``) whose result was loaded for each held reco, the plain
+# 2dseq being the empty hook. The size check is skipped only for a request already in this set
+# (later frames); a hook, or other hook options, can return far more than the 2dseq that is
+# already held (WI-0104).
+_held_hook_keys: dict[tuple, set] = {}
 
 
 def _memo(key: tuple, compute):
@@ -480,7 +481,7 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         for key in ("flip_x", "flip_y", "flip_z"):
             data_kwargs.pop(key, None)
         this_hook = _hook_key(task.hook_name, hook_args)
-        already_loaded = reco_key in _held_recos and _held_hook_keys.get(reco_key) == this_hook
+        already_loaded = reco_key in _held_recos and this_hook in _held_hook_keys.get(reco_key, ())
         if task.memory_limit_bytes > 0 and not task.memory_confirmed and not already_loaded:
 
             def expected_size() -> Optional[int]:
@@ -604,7 +605,7 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         # C9: what brkraw keeps for this reco is the one copy the worker holds.
         _held_recos[reco_key] = _kept_nbytes(scan, task.reco_id)
         _held_scans[reco_key] = scan
-        _held_hook_keys[reco_key] = this_hook
+        _held_hook_keys.setdefault(reco_key, set()).add(this_hook)
         shm_name = create_shared_array(data)
         out_shape, out_dtype = tuple(cast(np.ndarray, data).shape), str(data.dtype)
         del data  # the block now has the values; keep no second reference in this frame
@@ -733,7 +734,7 @@ def _process_timecourse(task: TimecourseRequest, output_queue: multiprocessing.Q
         reco_key = (task.path, task.scan_id, task.reco_id)
         _held_recos[reco_key] = max(_held_recos.get(reco_key, 0), _kept_nbytes(scan, task.reco_id))
         _held_scans[reco_key] = scan
-        _held_hook_keys.setdefault(reco_key, _hook_key(None, {}))  # the held data is the plain 2dseq
+        _held_hook_keys.setdefault(reco_key, set()).add(_hook_key(None, {}))  # it also holds the plain 2dseq
         if view.ndim < 4:
             raise ValueError("Timecourse requires 4D data.")
         while view.ndim > 4:  # axes after the 4th: the requested index, as for a voxel

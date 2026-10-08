@@ -1856,9 +1856,13 @@ class ViewerController:
             if enabled and not has_three:
                 self._request_viewer_volume()
                 return
-            if not enabled and has_three:
-                self._render_viewer_views()  # the held block is the plain frame meanwhile
-                self._request_viewer_volume()  # one frame again; main lets the other two go
+            if not enabled:
+                if has_three:
+                    self._render_viewer_views()  # the held block is the plain frame meanwhile
+                # Always ask for one frame again, whatever main holds now: a 3-frame request sent
+                # when RGB was turned on may still be on its way, and this newer request makes
+                # main drop that late answer (job id), so main never keeps 3 frames with RGB off.
+                self._request_viewer_volume()
                 return
         self._render_viewer_views()
 

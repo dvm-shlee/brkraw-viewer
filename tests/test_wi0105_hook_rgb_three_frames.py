@@ -223,3 +223,28 @@ def test_a_three_block_of_a_longer_result_is_not_colour(four):
     assert four._viewer_frames == 4
     assert four._view.rgb[-1][1] is False
     assert four._view.views[-1]["xy"].ndim == 2
+
+
+def test_rgb_off_before_the_three_frame_answer_arrives_still_ends_with_one_frame(three):
+    # The worker is a separate process: RGB is turned on, then off again before its answer to the
+    # 3-frame request has come back. Requests are answered in the order they were sent.
+    three._request_viewer_volume()
+    pending = []
+
+    def submit(req):
+        three.submitted.append(req)
+        out = _Queue()
+        convert_worker._process_load_volume(req, out)
+        pending.append(out.items[0])
+
+    three._worker = SimpleNamespace(submit=submit, log_queue=None)
+    three.on_viewer_rgb_toggle(True)  # 3-frame request, answer not here yet
+    assert np.shape(three._viewer_raw_volume) == SHAPE3 + (1,)
+    three.on_viewer_rgb_toggle(False)  # off again while main still holds one frame
+    reqs = _loads(three)
+    assert [(r.frame_start, r.frame_count) for r in reqs[-2:]] == [(0, 3), (0, 1)]
+    for result in pending:  # now the answers arrive, in the order sent
+        three._on_volume_result(result)
+    assert three.state.viewer.rgb_mode is False
+    assert np.shape(three._viewer_raw_volume) == SHAPE3 + (1,)
+    assert three._view.rgb[-1] == (True, False)

@@ -481,3 +481,64 @@ def test_two_categories_of_one_file_and_other_files_stay_independent(addons, tmp
     addons._open_text_editor(path=other, title="Edit rule")
     assert len(addons.tk.windows) == 3
     assert not addons.box.showinfo.called
+
+
+# ---- 6. an open Hook Options window follows an Apply made in the other tab --------------------
+
+
+def _vars(panel):
+    return {k: v.get() for k, v in panel._hook_options_dialog._vars.items()}
+
+
+def test_viewer_options_window_shows_what_the_convert_tab_applied(fake_tk):
+    panel = _panel(hook_args={"alpha": 5})
+    ViewerTopPanel._open_hook_options(panel, SimpleNamespace())
+    assert _vars(panel)["alpha"] == "5"
+    ViewerTopPanel.set_hook_args(panel, {"alpha": 8, "beta": "y"})  # the controller, after an Apply elsewhere
+    assert _vars(panel) == {"alpha": "8", "beta": "y"}
+    assert len(fake_tk.windows) == 1
+
+
+def test_convert_options_window_shows_what_the_viewer_tab_applied(fake_tk):
+    tab = _convert_tab(hook_args={"alpha": 5})
+    ConvertTab._open_hook_options(tab)
+    assert tab._hook_options_dialog._vars["alpha"].get() == "5"
+    ConvertTab.set_hook_state(tab, "sordino", True, {"alpha": 11})
+    assert tab._hook_options_dialog._vars["alpha"].get() == "11"
+    assert len(fake_tk.windows) == 1
+
+
+def test_apply_in_the_same_tab_does_not_rebuild_the_form(fake_tk):
+    panel = _panel(hook_args={"alpha": 5})
+    got = []
+    callbacks = SimpleNamespace(on_hook_options_apply=lambda name, values: got.append(values))
+    ViewerTopPanel._open_hook_options(panel, callbacks)
+    dialog = panel._hook_options_dialog
+    dialog._vars["alpha"].set("4")
+    dialog._apply()
+    var_before = dialog._vars["alpha"]
+    ViewerTopPanel.set_hook_args(panel, got[-1])  # the controller echoes the applied values back
+    assert dialog._vars["alpha"] is var_before  # nothing re-rendered, a typed value is not lost
+    assert dialog._vars["alpha"].get() == "4"
+
+
+def test_a_closed_options_window_is_not_reopened_by_a_refresh(fake_tk):
+    panel = _panel(hook_args={"alpha": 5})
+    ViewerTopPanel._open_hook_options(panel, SimpleNamespace())
+    panel._hook_options_dialog._close()
+    fake_tk.windows[0].deiconify.reset_mock()
+    ViewerTopPanel.set_hook_args(panel, {"alpha": 8})
+    assert not fake_tk.windows[0].deiconify.called
+    ViewerTopPanel._open_hook_options(panel, SimpleNamespace())  # opened again: shows the new value
+    assert _vars(panel)["alpha"] == "8"
+
+
+def test_without_an_options_window_nothing_happens(fake_tk):
+    panel = _panel(hook_args=None)
+    ViewerTopPanel.set_hook_args(panel, {"alpha": 8})
+    assert panel._hook_args == {"alpha": 8} and fake_tk.windows == []
+
+
+def test_controller_apply_in_one_tab_reaches_the_other_tab_view(controller):
+    controller.on_convert_hook_options_apply("sordino", {"ignore_samples": 4})
+    assert controller._view.viewer_args == {"ignore_samples": 4}

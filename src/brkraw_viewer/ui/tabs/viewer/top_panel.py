@@ -3,7 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from brkraw_viewer.ui.windows.hook_options import show_hook_options
+from brkraw_viewer.ui.windows.hook_options import refresh_open_dialog, show_hook_options
 
 
 class ViewerTopPanel(ttk.Frame):
@@ -369,6 +369,8 @@ class ViewerTopPanel(ttk.Frame):
 
     def set_hook_args(self, hook_args: dict | None) -> None:
         self._hook_args = dict(hook_args) if isinstance(hook_args, dict) else None
+        # an open Hook Options window shows what was applied, also when it was applied in the Convert tab
+        refresh_open_dialog(self, (self._hook_name_var.get() or "").strip(), self._hook_args)
 
     def set_rgb_state(self, *, enabled: bool, active: bool) -> None:
         self._rgb_var.set(bool(active))

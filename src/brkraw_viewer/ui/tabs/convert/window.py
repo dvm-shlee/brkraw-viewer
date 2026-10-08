@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Any
 
-from brkraw_viewer.ui.windows.hook_options import HookOptionsDialog, show_hook_options
+from brkraw_viewer.ui.windows.hook_options import HookOptionsDialog, refresh_open_dialog, show_hook_options
 
 class ConvertTab:
     TITLE = "Convert"
@@ -603,6 +603,8 @@ class ConvertTab:
         self._hook_name_var.set(hook_name or "None")
         self._hook_enabled_var.set(bool(enabled))
         self._hook_args = dict(hook_args) if isinstance(hook_args, dict) else None
+        # an open Hook Options window shows what was applied, also when it was applied in the Viewer tab
+        refresh_open_dialog(self, (hook_name or "").strip(), self._hook_args)
 
     def set_layout_fields(
         self,

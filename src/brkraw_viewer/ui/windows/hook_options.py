@@ -245,6 +245,8 @@ class HookOptionsDialog:
         self._vars: Dict[str, tk.StringVar] = {}
         self._defaults: Dict[str, Any] = {}
         self._choices: Dict[str, Dict[str, Any]] = {}
+        self._preset: Optional[Dict[str, Any]] = None
+        self._hints: Dict[str, Any] = {}
 
     def is_open(self) -> bool:
         """True while the window exists (shown or withdrawn); a destroyed window is not open."""
@@ -266,6 +268,21 @@ class HookOptionsDialog:
         # Show what is applied now, not what was typed and left unapplied earlier.
         self._vars = {}
 
+    def refresh(self, *, hook_name: str, hook_args: Optional[dict]) -> None:
+        """Show values applied elsewhere (the other tab) in this open window (WI-0104).
+
+        Does nothing when the window is for another hook, when the values are the ones it
+        already holds (its own Apply echoed back, so a typed value is not lost), or before it
+        was ever shown. A hidden window stays hidden and shows the new values when opened.
+        """
+        new_args = dict(hook_args or {})
+        if (hook_name or "").strip() != self._hook_name or new_args == (self._hook_args or {}):
+            return
+        self._hook_args = new_args
+        self._vars = {}  # the form is rebuilt from the applied values
+        if self._preset is not None and self.is_open():
+            self._render_form(self._preset, self._hints)
+
     def show(self) -> Optional[str]:
         """Show the window. Returns None when shown, else the reason it cannot be shown (WI-0104)."""
         name = (self._hook_name or "").strip()
@@ -280,6 +297,7 @@ class HookOptionsDialog:
         if not preset:
             return f"Hook '{name}' has no options to edit."
         hints = infer_hook_option_hints(entry)
+        self._preset, self._hints = preset, hints
 
         if self._window is None or not self._window.winfo_exists():
             win = tk.Toplevel(self._parent)
@@ -434,6 +452,17 @@ def show_hook_options(owner: Any, parent: tk.Misc, *, hook_name: str, hook_args:
     if reason:
         notify(parent, reason)
     return dialog
+
+
+def refresh_open_dialog(owner: Any, hook_name: str, hook_args: Optional[dict]) -> None:
+    """Pass options applied elsewhere on to the options window ``owner`` has open, if any."""
+    dialog = getattr(owner, "_hook_options_dialog", None)
+    if dialog is None or not dialog.is_open():
+        return
+    try:
+        dialog.refresh(hook_name=hook_name, hook_args=hook_args)
+    except Exception:
+        logger.debug("Hook options window refresh failed", exc_info=True)
 
 
 def notify(parent: Any, text: str) -> None:

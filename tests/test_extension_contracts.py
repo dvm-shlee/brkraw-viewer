@@ -104,6 +104,7 @@ def test_volume_request_drops_hook_args_when_hook_disabled():
     controller._resolve_cycle_frames = lambda: 1
     # memory-notice state added by WI-0068 (this test skips __init__)
     controller._memory_limit_bytes = 0
+    controller._peak_limit_bytes = 0  # WI-0104 item 7
     controller._memory_confirmed = set()
     controller._memory_declined = set()
 

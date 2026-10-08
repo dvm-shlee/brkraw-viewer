@@ -349,12 +349,16 @@ def _expected_nbytes(scan: ScanLoader, reco_id: int) -> Optional[int]:
         return None
 
 
-def _hook_output_nbytes(scan: ScanLoader, reco_id: int, data_kwargs: dict) -> Optional[int]:
-    """Bytes a converter hook's ``get_dataobj`` will return, when the hook says (C9).
+def _hook_output_info(scan: ScanLoader, reco_id: int, data_kwargs: dict) -> Optional[dict]:
+    """What a converter hook says about its output before reading, when it says (C9).
 
     A hook module that offers ``get_dataobj_info(scan, reco_id, **kwargs)`` (brkraw-sordino
-    does, WI-0071) reports the size of its output without reading. None when the hook does
-    not offer it or it fails; the caller then falls back to the 2dseq size.
+    does, WI-0071) reports the size of its output without reading. Returns ``nbytes`` (the
+    result), ``peak_nbytes`` (the hook's own estimate of its highest memory use: one volume's
+    reconstruction + the result buffer + three cache frames, so it is already complete and
+    must not be added to ``nbytes``) and ``limit_nbytes`` (the memory the hook allows itself);
+    each None when absent or not a number (an older hook). None when the hook does not offer
+    the function or it fails; the caller then falls back to the 2dseq size.
     """
     hook = getattr(scan, "_converter_hook", None)
     func = hook.get("get_dataobj") if isinstance(hook, dict) or hasattr(hook, "get") else None
@@ -369,11 +373,25 @@ def _hook_output_nbytes(scan: ScanLoader, reco_id: int, data_kwargs: dict) -> Op
         return None
     try:
         info = info_func(scan, reco_id, **data_kwargs)
-        nbytes = info.get("nbytes") if isinstance(info, dict) else None
-        return int(nbytes) if nbytes is not None else None
+        if not isinstance(info, dict):
+            return {"nbytes": None, "peak_nbytes": None, "limit_nbytes": None}
+
+        def number(name: str) -> Optional[int]:
+            value = info.get(name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return None
+            return int(value)
+
+        return {name: number(name) for name in ("nbytes", "peak_nbytes", "limit_nbytes")}
     except Exception as exc:
         logger.debug("Hook size unavailable for reco %s: %s", reco_id, exc)
         return None
+
+
+def _hook_output_nbytes(scan: ScanLoader, reco_id: int, data_kwargs: dict) -> Optional[int]:
+    """Bytes a converter hook's ``get_dataobj`` will return, when the hook says (C9)."""
+    info = _hook_output_info(scan, reco_id, data_kwargs)
+    return info["nbytes"] if info else None
 
 
 def _kept_nbytes(scan: ScanLoader, reco_id: int) -> int:
@@ -482,25 +500,44 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
             data_kwargs.pop(key, None)
         this_hook = _hook_key(task.hook_name, hook_args)
         already_loaded = reco_key in _held_recos and this_hook in _held_hook_keys.get(reco_key, ())
-        if task.memory_limit_bytes > 0 and not task.memory_confirmed and not already_loaded:
+        ask_size = task.memory_limit_bytes > 0
+        ask_peak = enable_hook and task.peak_limit_bytes > 0
+        if (ask_size or ask_peak) and not task.memory_confirmed and not already_loaded:
 
-            def expected_size() -> Optional[int]:
+            def expected_sizes() -> tuple:
+                # (result bytes, the hook's peak bytes, the hook's own limit): the last two
+                # are None when the hook does not say (older brkraw-sordino).
                 if enable_hook:
                     # a hook can change shape and dtype: ask the hook first (C9)
-                    hooked = _hook_output_nbytes(scan, task.reco_id, data_kwargs)
-                    if hooked is not None:
-                        return hooked
-                return _expected_nbytes(scan, task.reco_id)
+                    info = _hook_output_info(scan, task.reco_id, data_kwargs)
+                    if info is not None and info["nbytes"] is not None:
+                        return info["nbytes"], info["peak_nbytes"], info["limit_nbytes"]
+                    if info is not None:
+                        return _expected_nbytes(scan, task.reco_id), info["peak_nbytes"], info["limit_nbytes"]
+                return _expected_nbytes(scan, task.reco_id), None, None
 
-            expected = _memo(("nbytes",) + reco_key + _hook_key(task.hook_name, hook_args), expected_size)
+            expected, peak, hook_limit = _memo(
+                ("nbytes",) + reco_key + _hook_key(task.hook_name, hook_args), expected_sizes
+            )
             held_other = int(sum(v for k, v in _held_recos.items() if k != reco_key))
             held_other += max(int(task.other_held_bytes or 0), 0)  # array layers held by main
-            if isinstance(expected, int) and expected + held_other > task.memory_limit_bytes:
+            hook_refuses = peak is not None and hook_limit is not None and peak > hook_limit
+            size_over = ask_size and isinstance(expected, int) and expected + held_other > task.memory_limit_bytes
+            peak_over = ask_peak and peak is not None and peak + held_other > task.peak_limit_bytes
+            if hook_refuses and (size_over or peak_over):
+                # The hook will stop this itself and say what to change; asking first would
+                # only delay that message (D-0170).
+                logger.info("Hook peak %s is over its own limit %s: not asking, the hook reports it", peak, hook_limit)
+            elif size_over or peak_over:
+                reason = "both" if size_over and peak_over else ("size" if size_over else "peak")
                 logger.info(
-                    "Load needs confirmation: %s bytes + %s held > limit %s",
+                    "Load needs confirmation (%s): %s bytes, peak %s, %s held; limits %s and %s",
+                    reason,
                     expected,
+                    peak,
                     held_other,
                     task.memory_limit_bytes,
+                    task.peak_limit_bytes,
                 )
                 output_queue.put(
                     LoadVolumeResult(
@@ -512,6 +549,9 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
                         estimated_bytes=expected,
                         limit_bytes=task.memory_limit_bytes,
                         held_bytes=held_other,
+                        reason=reason,
+                        peak_bytes=peak,
+                        peak_limit_bytes=task.peak_limit_bytes,
                     )
                 )
                 return

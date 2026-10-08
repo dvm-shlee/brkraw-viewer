@@ -32,6 +32,10 @@ def default_viewer_config() -> Dict[str, Any]:
             # the installed memory, at least 512 MB (D-0169, WI-0104 item 8); a number is in MB
             # and wins, also when an older config still holds the old 1536; 0 = never ask.
             "memory_limit_mb": "auto",
+            # With a converter hook on: ask when the hook's reconstruction peak (plus what the
+            # viewer holds for other data) would pass this percent of the installed memory
+            # (D-0170, WI-0104 item 7); 0 = do not ask for the peak.
+            "hook_memory_percent": 25,
         },
         "registry": {
             "path": "viewer/registry.jsonl",

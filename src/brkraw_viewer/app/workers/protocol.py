@@ -57,6 +57,10 @@ class LoadVolumeRequest:
     # Bytes the main process holds for layers it owns (arrays given in main, C2 "array");
     # counted in the same total as what the worker holds (C9).
     other_held_bytes: int = 0
+    # With a converter hook on: ask when the hook's reconstruction peak (``peak_nbytes``, plus
+    # what is held for other data) is over this many bytes (a share of the installed memory,
+    # WI-0104 item 7, D-0170). 0 = do not ask for the peak.
+    peak_limit_bytes: int = 0
 
 
 @dataclass(frozen=True)
@@ -76,6 +80,11 @@ class LoadVolumeResult:
     estimated_bytes: Optional[int] = None
     limit_bytes: int = 0
     held_bytes: int = 0
+    # Why it asked: "size" (the data held would pass limit_bytes), "peak" (the hook's
+    # reconstruction peak, peak_bytes, would pass peak_limit_bytes) or "both". One question.
+    reason: str = ""
+    peak_bytes: Optional[int] = None
+    peak_limit_bytes: int = 0
 
 
 @dataclass(frozen=True)

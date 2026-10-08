@@ -227,7 +227,7 @@ def test_timecourse_request_is_sent_once_per_voxel_and_old_answers_are_dropped(c
 
 def test_default_cache_settings_are_the_ones_the_code_reads():
     cache = viewer_config.default_viewer_config()["cache"]
-    assert set(cache) == {"memory_limit_mb"}  # the hook share arrives with WI-0104 item 7
+    assert set(cache) == {"memory_limit_mb", "hook_memory_percent"}  # WI-0104 items 8 and 7
     assert cache["memory_limit_mb"] == "auto"  # 16 % of the installed memory, at least 512 MB (WI-0104 item 8, D-0169)
 
 

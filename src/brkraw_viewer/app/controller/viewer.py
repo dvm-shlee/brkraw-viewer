@@ -293,6 +293,14 @@ class ViewerController:
         installed = _memory.installed_memory()
         self._memory_limit = _memory.resolve_memory_limit(cache.get("memory_limit_mb"), installed)
         self._memory_limit_bytes = self._memory_limit.limit_bytes
+        # Item 7: with a hook on, a share of the installed memory for its reconstruction peak.
+        # 0 = off; "never ask" (memory_limit_mb 0) turns this question off too.
+        self._hook_percent = _memory.resolve_hook_percent(cache.get("hook_memory_percent"))
+        self._peak_limit_bytes = (
+            int(self._memory_limit.installed_bytes * self._hook_percent / 100.0)
+            if self._memory_limit_bytes > 0 and self._hook_percent > 0
+            else 0
+        )
 
     @staticmethod
     def _accepts_message(func: Callable) -> bool:
@@ -308,12 +316,30 @@ class ViewerController:
         image = int(result.estimated_bytes or 0)
         held = int(getattr(result, "held_bytes", 0) or 0)
         held_text = f" plus {held / mb:,.0f} MB already held" if held else ""
-        total = (image + held) / mb
-        lines = [
-            f"With this scan the viewer would hold about {total:,.0f} MB "
-            f"(this data {image / mb:,.0f} MB{held_text}), over the {result.limit_bytes / mb:,.0f} MB limit.",
-            _memory.describe_limit(self._memory_limit),
-            "",
+        reason = getattr(result, "reason", "") or "size"
+        lines: list[str] = []
+        if reason in ("size", "both"):
+            total = (image + held) / mb
+            lines += [
+                f"With this scan the viewer would hold about {total:,.0f} MB "
+                f"(this data {image / mb:,.0f} MB{held_text}), over the {result.limit_bytes / mb:,.0f} MB limit.",
+                _memory.describe_limit(self._memory_limit),
+                "",
+            ]
+        if reason in ("peak", "both"):
+            peak = int(getattr(result, "peak_bytes", 0) or 0)
+            installed = max(self._memory_limit.installed_bytes, 1)
+            percent = (peak + held) * 100.0 / installed
+            assumed = " (assumed, the installed memory could not be read)" if self._memory_limit.installed_assumed else ""
+            lines += [
+                f"The converter hook reports a peak of about {peak / mb:,.0f} MB while it reconstructs"
+                f"{held_text}: {percent:.0f} % of the {installed / mb:,.0f} MB installed memory{assumed}. "
+                f"The viewer asks above {self._hook_percent:g} % ({result.peak_limit_bytes / mb:,.0f} MB; "
+                "viewer.cache.hook_memory_percent, 0 = do not ask).",
+                f"The peak already includes the result image ({image / mb:,.0f} MB) and the hook's working memory.",
+                "",
+            ]
+        lines += [
             "Loading keeps the data in memory and needs somewhat more while loading.",
             "Continue loading anyway? (No cancels this load.)",
         ]
@@ -373,8 +399,16 @@ class ViewerController:
             return
         self._memory_declined.add(key)
         if self._view is not None:
+            if getattr(result, "reason", "") == "peak":
+                peak_mb = float(getattr(result, "peak_bytes", 0) or 0) / (1024 * 1024)
+                over = (
+                    f"the hook's peak of about {peak_mb:.0f} MB is over the "
+                    f"{float(result.peak_limit_bytes or 0) / (1024 * 1024):.0f} MB share"
+                )
+            else:
+                over = f"about {estimated_mb:.0f} MB is over the {limit_mb:.0f} MB limit"
             self._view.set_status(
-                f"Load cancelled: about {estimated_mb:.0f} MB is over the {limit_mb:.0f} MB limit "
+                f"Load cancelled: {over} "
                 "(turn the hook off and on, press Apply, or select the scan again to be asked again)."
             )
 
@@ -382,6 +416,7 @@ class ViewerController:
         key = self._memory_key()
         return {
             "memory_limit_bytes": self._memory_limit_bytes,
+            "peak_limit_bytes": self._peak_limit_bytes,
             "memory_confirmed": self._memory_choice_key(hooked) in self._memory_confirmed,
             # C9 (WI-0072): the viewer shows one scan layer, so the worker keeps only the
             # reco being loaded and frees what it holds for any other.

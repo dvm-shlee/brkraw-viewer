@@ -11,6 +11,7 @@ that file, so teams can share one configuration.
 viewer:
   cache:
     memory_limit_mb: auto   # auto = 16 % of the installed memory (at least 512 MB); a number = MB; 0 = never ask
+    hook_memory_percent: 25 # with a converter hook on: ask when its peak passes this % of the installed memory; 0 = off
     # path: cache           # optional, see "Disk cache" below
   registry:
     path: viewer/registry.jsonl
@@ -23,6 +24,7 @@ viewer:
 - `viewer.cache.memory_limit_mb`: the memory notice below. Missing or `auto`: 16 % of
   the installed memory, at least 512 MB. A number is used as written (an older config
   that still holds `1536` keeps that number); `0` never asks.
+- `viewer.cache.hook_memory_percent`: the hook notice ("Converter hook peak" below).
 - `viewer.registry.path`: the registry file, relative to the BrkRaw config folder
   unless it is absolute. A launch with `--registry`, the
   `BRKRAW_VIEWER_REGISTRY_PATH` variable or `viewer-registry -t` uses another file
@@ -84,6 +86,31 @@ limit and where the limit comes from (the percentage and the installed memory, o
 setting, and the 512 MB minimum when it applies). **Yes** continues, **No** cancels that load.
 `cache.enabled` and `cache.max_items` were never read by the viewer; they are removed from
 the defaults and ignored if they are still in an existing `config.yaml`.
+
+### Converter hook peak
+
+A converter hook such as brkraw-sordino reconstructs one volume at a time, so what matters
+is not only the size of the result. When the hook can report its peak memory use
+(`peak_nbytes`; brkraw-sordino does), the viewer compares **that peak plus what it already
+holds for other data** with `viewer.cache.hook_memory_percent` of the installed memory
+(default 25 %, so 4 GB on a 16 GB computer). The peak the hook reports already contains one
+volume's reconstruction, the result image (every frame it returns) and three cached frames,
+so the viewer does not add the image again. If it is over, or the data held is over the
+memory limit above, the viewer asks **once**: the notice shows the peak, its percentage of
+the installed memory and the share it asks above. Yes and No work as for the memory limit.
+
+- `0` turns this question off; `memory_limit_mb: 0` (never ask) turns it off as well.
+  A value of 100 or more means "only ask above the installed memory"; a value that is not a
+  number uses 25.
+- The share should be larger than the 16 % automatic limit, otherwise the memory limit
+  question already covers it.
+- When the peak is over the hook's own limit (brkraw-sordino: half of the installed memory
+  unless you set another), the hook will refuse the load by itself and tell you what to
+  change, so the viewer does not ask first; you see the hook's message.
+- A hook that does not report a peak, a load whose cache already exists (its peak is the
+  image and three cached frames) and a plain load without a hook are not affected.
+- The 25 % is a proposal, not a measured value. The hook's estimate is at most twice the
+  measured use, so the notice can come before the memory is really short.
 
 ## Disk cache
 

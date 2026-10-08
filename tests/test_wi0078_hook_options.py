@@ -194,7 +194,8 @@ def test_apply_with_hook_on_reloads_with_the_new_options(controller):
     reqs = _load_requests()
     assert [r.hook_args for r in reqs] == [{"ignore_samples": 2}, {"ignore_samples": 3}]
     assert all(r.hook_name == "sordino" for r in reqs)
-    assert all(r.frame_start is None and r.frame_count is None for r in reqs)
+    # WI-0105: the worker keeps every frame of the hook's result; main asks for the shown frame
+    assert all((r.frame_start, r.frame_count) == (0, 1) for r in reqs)
     assert reqs[0].job_id != reqs[1].job_id
 
 
@@ -210,7 +211,7 @@ def test_apply_with_hook_off_stores_the_options_for_later(controller):
 
 def test_reloaded_result_replaces_the_shown_volume(controller):
     controller._viewer_hook_enabled = True
-    controller._frame_cache[0] = {"volume": "stale"}  # a frame cached before the hook was on
+    controller._frame_cache[5] = {"volume": "stale", "raw": np.zeros(1)}  # a frame cached before
     first = np.full((2, 2, 2, 3), 1.0)
     second = np.full((2, 2, 2, 3), 2.0)
     shown = []
@@ -227,7 +228,8 @@ def test_reloaded_result_replaces_the_shown_volume(controller):
             LoadVolumeResult(job_id=req.job_id, shm_name=name, shape=arr.shape, dtype=str(arr.dtype), frames=3)
         )
     assert [float(v.mean()) for v in shown] == [1.0, 2.0]
-    assert controller._frame_cache == {}
+    assert list(controller._frame_cache) == [0]  # the stale frame is gone; only the reloaded one is kept
+    assert float(controller._frame_cache[0]["raw"].mean()) == 2.0
 
 
 def test_result_of_an_older_apply_is_dropped(controller):

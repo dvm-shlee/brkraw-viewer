@@ -252,6 +252,9 @@ class ViewerController:
             self.state.viewer.frame_index,
         )
         frame_key = self._pending_frame_requests.pop(result.job_id, None)
+        if frame_key is not None and self._viewer_hook_enabled:
+            # a start past the hook result's last frame was answered with the last frame
+            frame_key = min(frame_key, max(self._viewer_frames - 1, 0))
         if frame_key is not None:
             self._frame_cache[frame_key] = {
                 "volume": self._viewer_volume,
@@ -989,12 +992,12 @@ class ViewerController:
             self.state.viewer.space,
             bool(self._viewer_hook_enabled),
         )
-        frame_start = max(self.state.viewer.frame_index, 0)
+        frame_start: Optional[int] = max(self.state.viewer.frame_index, 0)
         frame_count: Optional[int] = 1
-        if self._viewer_hook_enabled:
-            frame_start = None
-            frame_count = None
-        else:
+        if not self._viewer_hook_enabled:
+            # With a converter hook on, the worker still reads the hook for every frame once and
+            # keeps the result; main asks for the frame it shows, like for an unhooked 4D scan
+            # (C9, WI-0105).
             cycle_frames = self._resolve_cycle_frames()
             if cycle_frames <= 1 or (
                 cycle_frames == self._viewer_slicepacks and self._viewer_frames <= 1
@@ -1002,7 +1005,7 @@ class ViewerController:
                 frame_start = None
                 frame_count = None
         self._pending_frame_requests = {}
-        if frame_start is not None and frame_count == 1 and not self._viewer_hook_enabled:
+        if frame_start is not None and frame_count == 1:
             try:
                 self._pending_frame_requests[job_id] = int(frame_start)
             except Exception:
@@ -1050,6 +1053,17 @@ class ViewerController:
             bool(v.flip_z),
             tuple(int(i) for i in indices),
             tuple(int(i) for i in (v.extra_indices or [])),
+            # the hook result and the plain data are different series (WI-0105)
+            self._timecourse_hook(),
+        )
+
+    def _timecourse_hook(self) -> Optional[tuple]:
+        """``(hook name, options as JSON)`` while a converter hook is on, else None."""
+        if not (self._viewer_hook_enabled and self._viewer_hook_name):
+            return None
+        return (
+            str(self._viewer_hook_name),
+            json.dumps(self._viewer_hook_args or {}, sort_keys=True, default=repr),
         )
 
     def _request_timecourse(self, indices: tuple[int, int, int]) -> None:
@@ -1057,7 +1071,7 @@ class ViewerController:
         key = self._timecourse_key(indices)
         if key is None or key == self._timecourse_pending:
             return
-        (path, sid, rid, slicepack, space, subject_type, subject_pose, fx, fy, fz, index, extra) = key
+        (path, sid, rid, slicepack, space, subject_type, subject_pose, fx, fy, fz, index, extra, hook) = key
         job_id = f"timecourse-{dt.datetime.now().timestamp()}"
         self._timecourse_job_id = job_id
         self._timecourse_pending = key
@@ -1075,6 +1089,8 @@ class ViewerController:
             flip_x=fx,
             flip_y=fy,
             flip_z=fz,
+            hook_name=hook[0] if hook else None,
+            hook_args=dict(self._viewer_hook_args or {}) if hook else None,
         )
         logger.debug("Timecourse request: scan=%s reco=%s index=%s", sid, rid, index)
         self._worker.submit(req)
@@ -1688,12 +1704,11 @@ class ViewerController:
                 self._timecourse_plot.set_vline(float(self.state.viewer.frame_index))
             except Exception:
                 pass
-        if self._viewer_hook_enabled:
-            self._render_viewer_views()
-        else:
-            if self._apply_cached_frame(self.state.viewer.frame_index):
-                return
-            self._schedule_frame_request()
+        # The same for a converter hook (WI-0105): the worker holds every frame of its result and
+        # main shows the frame it was sent.
+        if self._apply_cached_frame(self.state.viewer.frame_index):
+            return
+        self._schedule_frame_request()
 
     def on_viewer_hook_toggle(self, enabled: bool, hook_name: Optional[str]) -> None:
         logger.debug("Viewer hook toggle: enabled=%s name=%s", enabled, hook_name)
@@ -1994,7 +2009,7 @@ class ViewerController:
             )
         xi, yi, zi = indices
         if data.ndim >= 4 and int(data.shape[3]) > 1:
-            # main already has every frame (for example a hook's full output): read it here
+            # main already has every frame (a 4D volume it was sent whole): read it here
             extra_indices = self.state.viewer.extra_indices or []
             slicer: list[slice | int] = [xi, yi, zi, slice(None)]
             if data.ndim > 4:
@@ -2065,6 +2080,7 @@ class ViewerController:
             convert_enabled = self._convert_hook_enabled and bool(self._viewer_hook_name)
             self._view.set_convert_hook_state(self._viewer_hook_name or "None", convert_enabled, self._viewer_hook_args)
         if self._viewer_hook_enabled:
+            self._clear_frame_cache()  # frames of the result with the old options must not come back
             self._ask_again_for_current_request()
             self._request_viewer_volume()
 
@@ -2087,6 +2103,7 @@ class ViewerController:
         if self._view is not None:
             self._view.set_convert_hook_state(self._viewer_hook_name or "None", convert_enabled, self._hook_args_by_name.get(name))
         if self._viewer_hook_enabled and self._viewer_hook_name == name:
+            self._clear_frame_cache()  # frames of the result with the old options must not come back
             self._ask_again_for_current_request()
             self._request_viewer_volume()
 

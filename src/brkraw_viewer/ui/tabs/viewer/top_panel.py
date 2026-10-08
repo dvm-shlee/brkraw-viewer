@@ -260,8 +260,7 @@ class ViewerTopPanel(ttk.Frame):
 
     def _open_hook_options(self, callbacks) -> None:
         hook_name = (self._hook_name_var.get() or "").strip()
-        if not hook_name or hook_name == "None":
-            return
+
         def _apply(values: dict) -> None:
             handler = getattr(callbacks, "on_hook_options_apply", None)
             if callable(handler):

@@ -111,3 +111,80 @@ def test_progress_window_is_created_again_after_it_was_closed(monkeypatch):
     second = mw.open_worker_popup("queue", "Task")
     assert len(created) == 2
     assert second is created[1] and mw._task_window is second
+
+
+# ---- 2. Hook Options says why it does not open ------------------------------------------------
+
+
+@pytest.fixture
+def fake_tk(monkeypatch):
+    tk = _FakeTk()
+    monkeypatch.setattr(hook_options, "tk", tk)
+    monkeypatch.setattr(hook_options, "ttk", MagicMock(name="ttk"))
+    box = MagicMock(name="messagebox")
+    monkeypatch.setattr(hook_options, "messagebox", box)
+    tk.box = box
+
+    def _fn(scan, reco_id=None, alpha=1, beta="x", **kwargs):  # preset: alpha, beta
+        return None
+
+    monkeypatch.setattr(hook_options.converter_core, "resolve_hook", lambda name: {"get_dataobj": _fn})
+    return tk
+
+
+def _panel(hook_name="sordino", hook_args=None):
+    return SimpleNamespace(_hook_name_var=_Var(hook_name), _hook_args=hook_args)
+
+
+def _convert_tab(hook_name="sordino", hook_args=None):
+    return SimpleNamespace(
+        frame=object(),
+        _hook_name_var=_Var(hook_name),
+        _hook_args=hook_args,
+        _hook_enabled_var=_Var(True),
+        _hook_options_dialog=None,
+        _cb=SimpleNamespace(),
+    )
+
+
+def _said(tk):
+    assert tk.box.showinfo.called, "the user was told nothing"
+    return tk.box.showinfo.call_args[0][1]
+
+
+def test_hook_that_cannot_be_found_is_reported(fake_tk, monkeypatch):
+    def _boom(name):
+        raise KeyError(name)
+
+    monkeypatch.setattr(hook_options.converter_core, "resolve_hook", _boom)
+    ViewerTopPanel._open_hook_options(_panel(), SimpleNamespace())
+    assert fake_tk.windows == []
+    assert "sordino" in _said(fake_tk)
+
+
+def test_hook_without_options_is_reported(fake_tk, monkeypatch):
+    monkeypatch.setattr(hook_options.converter_core, "resolve_hook", lambda name: {"get_dataobj": lambda scan: None})
+    ViewerTopPanel._open_hook_options(_panel(), SimpleNamespace())
+    assert fake_tk.windows == []
+    assert "no options" in _said(fake_tk).lower()
+
+
+def test_scan_without_a_hook_is_reported_in_both_tabs(fake_tk):
+    ViewerTopPanel._open_hook_options(_panel(hook_name="None"), SimpleNamespace())
+    assert "no converter hook" in _said(fake_tk).lower()
+    fake_tk.box.reset_mock()
+    ConvertTab._open_hook_options(_convert_tab(hook_name=""))
+    assert "no converter hook" in _said(fake_tk).lower()
+    assert fake_tk.windows == []
+
+
+def test_convert_tab_reports_a_missing_hook_too(fake_tk, monkeypatch):
+    monkeypatch.setattr(hook_options.converter_core, "resolve_hook", lambda name: (_ for _ in ()).throw(KeyError(name)))
+    ConvertTab._open_hook_options(_convert_tab())
+    assert "sordino" in _said(fake_tk)
+
+
+def test_a_working_hook_still_opens_without_a_message(fake_tk):
+    ViewerTopPanel._open_hook_options(_panel(), SimpleNamespace())
+    assert len(fake_tk.windows) == 1
+    assert not fake_tk.box.showinfo.called

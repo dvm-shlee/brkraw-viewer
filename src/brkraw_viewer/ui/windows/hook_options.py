@@ -7,10 +7,14 @@ import inspect
 import json
 from typing import Any, Dict, Mapping, Optional, get_args, get_origin, get_type_hints
 
+import logging
+
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from brkraw.specs import hook as converter_core
+
+logger = logging.getLogger(__name__)
 
 _PRESET_IGNORE_PARAMS = frozenset(
     {
@@ -262,16 +266,19 @@ class HookOptionsDialog:
         # Show what is applied now, not what was typed and left unapplied earlier.
         self._vars = {}
 
-    def show(self) -> None:
-        if not self._hook_name:
-            return
+    def show(self) -> Optional[str]:
+        """Show the window. Returns None when shown, else the reason it cannot be shown (WI-0104)."""
+        name = (self._hook_name or "").strip()
+        if not name or name in ("None", "Disabled"):
+            return "This scan has no converter hook, so there are no hook options."
         try:
-            entry = converter_core.resolve_hook(self._hook_name)
-        except Exception:
-            return
+            entry = converter_core.resolve_hook(name)
+        except Exception as exc:
+            logger.warning("Hook options: hook %s could not be loaded: %s", name, exc)
+            return f"Hook '{name}' could not be loaded, so its options cannot be shown ({exc})."
         preset = infer_hook_preset(entry)
         if not preset:
-            return
+            return f"Hook '{name}' has no options to edit."
         hints = infer_hook_option_hints(entry)
 
         if self._window is None or not self._window.winfo_exists():
@@ -321,6 +328,7 @@ class HookOptionsDialog:
         if self._window is not None:
             self._window.deiconify()
             self._window.lift()
+        return None
 
     def _render_form(self, preset: Dict[str, Any], hints: Dict[str, Any]) -> None:
         container = self._container
@@ -422,5 +430,18 @@ def show_hook_options(owner: Any, parent: tk.Misc, *, hook_name: str, hook_args:
     else:
         dialog = HookOptionsDialog(parent, hook_name=hook_name, hook_args=hook_args, on_apply=on_apply)
         owner._hook_options_dialog = dialog
-    dialog.show()
+    reason = dialog.show()
+    if reason:
+        notify(parent, reason)
     return dialog
+
+
+def notify(parent: Any, text: str) -> None:
+    """Tell the user why the options window did not open; never raises (WI-0104)."""
+    try:
+        messagebox.showinfo("Hook Options", text, parent=parent.winfo_toplevel())
+    except Exception:
+        try:
+            messagebox.showinfo("Hook Options", text)
+        except Exception:
+            pass

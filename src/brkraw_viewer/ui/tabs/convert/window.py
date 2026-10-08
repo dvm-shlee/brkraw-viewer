@@ -556,8 +556,6 @@ class ConvertTab:
 
     def _open_hook_options(self) -> None:
         hook_name = (self._hook_name_var.get() or "").strip()
-        if not hook_name or hook_name == "None":
-            return
 
         def _apply(values: dict) -> None:
             self._hook_args = dict(values)

@@ -261,6 +261,18 @@ def test_cached_result_has_a_small_peak_and_is_not_asked(env, monkeypatch):
     assert not _load(memory_limit_bytes=1 * GB, peak_limit_bytes=4 * GB).needs_confirm
 
 
+def test_cached_result_is_judged_by_the_same_rule_as_any_other(env, monkeypatch):
+    # No exemption for a cache (wi-0104-choi-3 finding 8, a wording gap in the criterion, not in the
+    # code): the hook's peak is then the image and three cache frames, still compared with the share.
+    _hook(monkeypatch, env, {"nbytes": 5 * GB, "peak_nbytes": 5 * GB + 30 * MB, "limit_nbytes": 64 * GB, "cached": True})
+    result = _load(memory_limit_bytes=64 * GB, peak_limit_bytes=4 * GB)
+    assert result.needs_confirm and result.reason == "peak"
+    convert_worker._meta_cache.clear()
+    convert_worker._held_recos.clear()
+    convert_worker._held_hook_keys.clear()
+    assert not _load("fits", memory_limit_bytes=64 * GB, peak_limit_bytes=6 * GB).needs_confirm
+
+
 def test_an_older_hook_without_peak_nbytes_works_as_before(env, monkeypatch):
     _hook(monkeypatch, env, {"nbytes": 1 * MB})
     assert not _load(memory_limit_bytes=1 * GB, peak_limit_bytes=1).needs_confirm

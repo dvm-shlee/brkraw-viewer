@@ -107,8 +107,10 @@ the installed memory and the share it asks above. Yes and No work as for the mem
 - When the peak is over the hook's own limit (brkraw-sordino: half of the installed memory
   unless you set another), the hook will refuse the load by itself and tell you what to
   change, so the viewer does not ask first; you see the hook's message.
-- A hook that does not report a peak, a load whose cache already exists (its peak is the
-  image and three cached frames) and a plain load without a hook are not affected.
+- A hook that does not report a peak and a plain load without a hook are not affected.
+  A load whose reconstruction cache already exists is judged by the same rule: its peak is
+  only the result image and three cached frames, so it is small unless the image itself is
+  large.
 - The 25 % is a proposal, not a measured value. The hook's estimate is at most twice the
   measured use, so the notice can come before the memory is really short.
 

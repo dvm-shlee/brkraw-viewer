@@ -166,10 +166,14 @@ class MainWindow(ttk.Frame):
         # ViewerView expects this to be a UI side-effect. Keep the handle internally.
         try:
             if self._task_window is not None and self._task_window.winfo_exists():
+                # One progress window: bring the open one forward and hand it back, so the
+                # caller finishes the window that is on screen (WI-0104; a second window used
+                # to be created and the first lost).
                 try:
                     self._task_window.lift()
                 except Exception:
                     pass
+                return self._task_window
             self._task_window = TaskProgressWindow(self.winfo_toplevel(), log_queue, title=title)
             return self._task_window
         except Exception:

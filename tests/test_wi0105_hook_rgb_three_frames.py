@@ -248,3 +248,112 @@ def test_rgb_off_before_the_three_frame_answer_arrives_still_ends_with_one_frame
     assert three.state.viewer.rgb_mode is False
     assert np.shape(three._viewer_raw_volume) == SHAPE3 + (1,)
     assert three._view.rgb[-1] == (True, False)
+
+
+# --- WI-0105 run 4 (D-0177): RGB off then on again, and a late answer is dropped ---------------
+
+
+class _Delayed:
+    """A worker whose answers are held until the test delivers them (a separate process)."""
+
+    def __init__(self, ctrl):
+        self.ctrl = ctrl
+        self.pending = []  # (request, result), in the order sent
+        ctrl._worker = SimpleNamespace(submit=self.submit, log_queue=None)
+
+    def submit(self, req):
+        self.ctrl.submitted.append(req)
+        out = _Queue()
+        convert_worker._process_load_volume(req, out)
+        self.pending.append((req, out.items[0]))
+
+    def deliver(self, index):
+        self.ctrl._on_volume_result(self.pending[index][1])
+
+    def deliver_all(self):
+        for index in range(len(self.pending)):
+            self.deliver(index)
+        self.pending = []
+
+
+def test_rgb_off_and_straight_on_again_ends_with_colour_and_rgb_mode_on(three):
+    three._request_viewer_volume()
+    worker = _Delayed(three)
+    three.on_viewer_rgb_toggle(True)
+    worker.deliver_all()
+    assert np.shape(three._viewer_raw_volume) == SHAPE3 + (3,)
+    three.on_viewer_rgb_toggle(False)  # main still holds 3 frames; the 1-frame answer is on its way
+    three.on_viewer_rgb_toggle(True)  # straight on again
+    worker.deliver_all()  # answers arrive in the order sent
+    assert three.state.viewer.rgb_mode is True
+    assert np.shape(three._viewer_raw_volume) == SHAPE3 + (3,)  # not one frame with RGB on
+    assert three._view.rgb[-1] == (True, True)
+    assert three._view.views[-1]["xy"].ndim == 3  # drawn as colour, not grey
+
+
+def test_rgb_off_on_off_ends_with_one_frame(three):
+    three._request_viewer_volume()
+    worker = _Delayed(three)
+    three.on_viewer_rgb_toggle(True)
+    worker.deliver_all()
+    for state in (False, True, False):
+        three.on_viewer_rgb_toggle(state)
+    worker.deliver_all()
+    assert three.state.viewer.rgb_mode is False
+    assert np.shape(three._viewer_raw_volume) == SHAPE3 + (1,)
+    assert three._view.rgb[-1] == (True, False)
+
+
+def test_a_late_answer_is_dropped_and_its_memory_released_not_shown(three, monkeypatch):
+    released = []
+    real = viewer_module.release_shared_array
+    monkeypatch.setattr(viewer_module, "release_shared_array", lambda name: (released.append(name), real(name)))
+    three._request_viewer_volume()
+    worker = _Delayed(three)
+    three.on_viewer_rgb_toggle(True)  # request A: 3 frames
+    three.on_viewer_rgb_toggle(False)  # request B: 1 frame, the newest
+    (req_a, res_a), (req_b, res_b) = worker.pending
+    assert (req_a.frame_start, req_a.frame_count) == (0, 3)
+    assert (req_b.frame_start, req_b.frame_count) == (0, 1)
+    assert res_a.job_id != res_b.job_id
+    assert three._viewer_job_id == res_b.job_id
+    before_volume = three._viewer_raw_volume
+    before_views = len(three._view.views)
+    # A's answer comes alone, after B was asked for: nothing may use it
+    worker.deliver(0)
+    assert released == [res_a.shm_name]
+    assert three._viewer_raw_volume is before_volume
+    assert np.shape(three._viewer_raw_volume) == SHAPE3 + (1,)
+    assert len(three._view.views) == before_views  # nothing was drawn from it
+    # B's answer (the newest) is then taken
+    worker.deliver(1)
+    assert released == [res_a.shm_name]
+    assert three._viewer_raw_volume is not before_volume
+    assert np.shape(three._viewer_raw_volume) == SHAPE3 + (1,)
+
+
+def test_the_newest_answer_wins_when_the_old_one_arrives_after_it(three):
+    three._request_viewer_volume()
+    worker = _Delayed(three)
+    three.on_viewer_rgb_toggle(True)  # A: 3 frames
+    three.on_viewer_rgb_toggle(False)  # B: 1 frame
+    worker.deliver(1)  # B first
+    worker.deliver(0)  # A late: must not replace B
+    assert np.shape(three._viewer_raw_volume) == SHAPE3 + (1,)
+    assert three.state.viewer.rgb_mode is False
+
+
+def test_two_requests_in_the_same_clock_tick_get_different_job_ids(three, monkeypatch):
+    # a late answer is dropped by its job id, so two requests must never share one
+    import datetime as real_dt
+
+    class _Frozen:
+        @staticmethod
+        def now():
+            return real_dt.datetime(2026, 10, 9, 0, 0, 0)
+
+    monkeypatch.setattr(viewer_module, "dt", SimpleNamespace(datetime=_Frozen))
+    three._request_viewer_volume()
+    first = three._viewer_job_id
+    three._request_viewer_volume()
+    assert three._viewer_job_id != first

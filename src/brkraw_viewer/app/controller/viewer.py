@@ -1000,7 +1000,10 @@ class ViewerController:
             return
         if self._memory_choice_key() in self._memory_declined:
             return
-        job_id = f"viewer-load-{dt.datetime.now().timestamp()}"
+        # A late answer is dropped by its job id, so no two requests may share one, even within
+        # one clock tick: a running number goes after the time.
+        self._viewer_job_seq = int(getattr(self, "_viewer_job_seq", 0)) + 1
+        job_id = f"viewer-load-{dt.datetime.now().timestamp()}-{self._viewer_job_seq}"
         self._viewer_job_id = job_id
         logger.debug(
             "Request viewer volume: scan=%s reco=%s frame=%s slicepack=%s space=%s hook=%s",
@@ -1853,7 +1856,12 @@ class ViewerController:
         if self._viewer_hook_enabled and self._viewer_frames == 3 and vol is not None and np.ndim(vol) == 4:
             # The worker holds the 3 frames of the hook result; main gets them only while RGB is on.
             has_three = int(np.shape(vol)[3]) == 3
-            if enabled and not has_three:
+            if enabled:
+                # Always ask for the 3 frames, whatever main holds now: RGB may have just been turned
+                # off, with its one-frame answer still on its way. This newer request makes main drop
+                # that late answer (job id), so RGB on never ends with one frame.
+                if has_three:
+                    self._render_viewer_views()  # colour at once from what main holds
                 self._request_viewer_volume()
                 return
             if not enabled:

@@ -63,8 +63,8 @@ wheels = [
 
 [[package]]
 name = "brkraw"
-version = "0.6.1rc1"
-source = { git = "https://github.com/dvm-shlee/brkraw?tag=0.6.1rc1#3f90f6d43df88af2ce922a98c5ebeeca7707c4b4" }
+version = "0.6.1rc2"
+source = { git = "https://github.com/BrkRaw/brkraw?tag=0.6.1rc2#ca7ee89ced62553d4c5b7a1ca88d66e55948b44a" }
 dependencies = [
     { name = "jsonschema", version = "4.25.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "jsonschema", version = "4.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -106,7 +106,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "brkraw", git = "https://github.com/dvm-shlee/brkraw?tag=0.6.1rc1" },
+    { name = "brkraw", git = "https://github.com/BrkRaw/brkraw?tag=0.6.1rc2" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
     { name = "nibabel", specifier = ">=5.0" },
     { name = "pillow", specifier = ">=10.0" },

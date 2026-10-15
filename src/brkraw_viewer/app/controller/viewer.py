@@ -2235,17 +2235,18 @@ class ViewerController:
     def _update_timecourse_plot(self, *, indices: Optional[tuple[int, int, int]] = None) -> None:
         if self._timecourse_plot is None or self._timecourse_window is None:
             return
-        try:
-            from brkraw_viewer.ui.components.plotter import PlotMeta
-        except Exception:
-            PlotMeta = None
         vol = self._viewer_volume
         if vol is None:
             self._timecourse_plot.set_message("No data")
             return
         if self._roi is not None:
+            # the ROI path is Tk-free: it runs before the UI plotter import below
             self._update_roi_plot()
             return
+        try:
+            from brkraw_viewer.ui.components.plotter import PlotMeta
+        except Exception:
+            PlotMeta = None
         data = np.asarray(vol)
         if indices is None:
             indices = (

@@ -286,3 +286,27 @@ def test_voxel_timecourse_still_works_without_a_roi(env):
     xi, yi, zi = (env.state.viewer.x_index, env.state.viewer.y_index, env.state.viewer.z_index)
     ras, _ = reorient_to_ras(PHANTOM, np.eye(4))
     assert env._timecourse_plot.lines[1][0] == pytest.approx([float(v) for v in ras[xi, yi, zi, :]])
+
+
+def test_roi_path_imports_no_tk(env, monkeypatch):
+    # Every import statement goes through builtins.__import__, even for modules
+    # already in sys.modules, so this sees the ROI path asking for Tk or the UI.
+    import builtins
+
+    real_import = builtins.__import__
+    asked = []
+
+    def guard(name, globals=None, locals=None, fromlist=(), level=0):
+        if level == 0 and (name.split(".")[0] == "tkinter" or name.startswith("brkraw_viewer.ui")):
+            asked.append(name)
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", guard)
+    env.set_roi("rect", (0, 1, 0, 1))
+    env._update_timecourse_plot()
+    tc = env.roi_timecourse()
+    env.on_viewer_jump(3, 3, env.state.viewer.z_index)  # same slice: ROI kept and re-plotted
+    monkeypatch.setattr(builtins, "__import__", real_import)
+    assert tc is not None and tc["n_mask"] == 4
+    assert env._roi is not None
+    assert asked == []

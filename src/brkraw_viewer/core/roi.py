@@ -1,8 +1,53 @@
 """ROI masks and statistics on one display slice (WI-0072, contract C6)."""
 
 import math
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Sequence
 import numpy as np
+
+
+ROI_SHAPES = ("rect", "ellipse")
+
+
+def roi_mask(shape: str, slice_shape: Tuple[int, int], geometry: Sequence[float]) -> np.ndarray:
+    """Boolean mask of a temporary ROI on one display slice, clipped to the slice.
+
+    Parameters
+    ----------
+    shape : str
+        "rect" or "ellipse".
+    slice_shape : (int, int)
+        Size (nu, nv) of the display slice in pixels.
+    geometry : sequence of float
+        For "rect": (u0, u1, v0, v1), inclusive pixel bounds; the corners may be given in either order.
+        For "ellipse": (cu, cv, ru, rv), centre and radii in pixels.
+
+    Returns
+    -------
+    numpy.ndarray
+        Bool array of shape ``slice_shape``. A ROI that extends past the slice keeps only the inside
+        part; a ROI fully outside the slice gives an all-False mask.
+
+    Raises
+    ------
+    ValueError
+        If ``shape`` is unknown, ``geometry`` has the wrong length or is not finite, or the
+        slice or radii are invalid (raised by ``rect_mask`` / ``ellipse_mask``).
+    """
+    if shape not in ROI_SHAPES:
+        raise ValueError(f"unknown ROI shape {shape!r}; expected 'rect' or 'ellipse'")
+    if len(slice_shape) != 2:
+        raise ValueError("slice_shape must be (nu, nv)")
+    nu, nv = int(slice_shape[0]), int(slice_shape[1])
+
+    if len(geometry) != 4:
+        raise ValueError(f"geometry for {shape!r} must have 4 values")
+    g = [float(x) for x in geometry]
+    if not all(math.isfinite(x) for x in g):
+        raise ValueError("geometry values must be finite")
+
+    if shape == "rect":
+        return rect_mask((nu, nv), g[0], g[1], g[2], g[3])
+    return ellipse_mask((nu, nv), g[0], g[1], g[2], g[3])
 
 
 def rect_mask(shape: Tuple[int, int], u0: float, u1: float, v0: float, v1: float) -> np.ndarray:

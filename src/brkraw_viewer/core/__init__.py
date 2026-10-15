@@ -5,7 +5,7 @@ functions; nothing here imports Tk.
 """
 from .composite import composite_over, label_rgba, layer_rgba, transparency_mask, window_to_index
 from .layers import Layer, LayerError, LayerStack
-from .roi import ellipse_mask, rect_mask, roi_stats
+from .roi import ellipse_mask, rect_mask, roi_mask, roi_stats
 from .resample import (
     Grid,
     SpaceMismatchError,
@@ -37,6 +37,7 @@ __all__ = [
     "map_indices",
     "normalize_window",
     "rect_mask",
+    "roi_mask",
     "roi_stats",
     "sample_linear",
     "sample_nearest",

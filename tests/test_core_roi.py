@@ -185,3 +185,34 @@ def test_roi_mask_is_exported_from_core():
 
     assert core.roi_mask is roi.roi_mask
     assert "roi_mask" in core.__all__
+
+
+def test_drag_geometry_square():
+    # Normal drag
+    assert roi.drag_geometry("square", (10, 20), (30, 40)) == ("rect", (10, 30, 20, 40))
+    # Reverse drag
+    assert roi.drag_geometry("square", (30, 40), (10, 20)) == ("rect", (10, 30, 20, 40))
+    # Mixed drag
+    assert roi.drag_geometry("square", (10, 40), (30, 20)) == ("rect", (10, 30, 20, 40))
+
+
+def test_drag_geometry_circle():
+    # Normal drag
+    # dist = sqrt(20^2 + 20^2) = sqrt(800) = 28.284...; r = 14.142...
+    res_shape, res_geom = roi.drag_geometry("circle", (10, 20), (30, 40))
+    assert res_shape == "ellipse"
+    assert res_geom[0] == 20.0 # cu
+    assert res_geom[1] == 30.0 # cv
+    assert res_geom[2] == pytest.approx(math.sqrt(800) / 2) # r
+    assert res_geom[3] == res_geom[2] # r
+
+
+def test_drag_geometry_errors():
+    # Zero size drag
+    with pytest.raises(ValueError, match="different"):
+        roi.drag_geometry("square", (10, 10), (10, 10))
+    with pytest.raises(ValueError, match="different"):
+        roi.drag_geometry("circle", (10, 10), (10, 10))
+    # Bad tool
+    with pytest.raises(ValueError, match="unknown tool"):
+        roi.drag_geometry("triangle", (10, 10), (20, 20))

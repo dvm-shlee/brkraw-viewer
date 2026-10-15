@@ -1174,6 +1174,7 @@ class ViewerController:
             "mask": mask,
         }
         self._request_roi()
+        self._publish_roi()
         self._render_viewer_views()
 
     def clear_roi(self) -> None:
@@ -1207,6 +1208,18 @@ class ViewerController:
         self._roi_job_id = None
         self._roi_pending = None
         self._roi_series = None
+        self._publish_roi()
+
+    def _publish_roi(self) -> None:
+        """Tell the view which ROI to draw (None clears the overlay)."""
+        roi, view = self._roi, self._view
+        fn = getattr(view, "set_viewer_roi", None)
+        if not callable(fn):
+            return
+        try:
+            fn(None if roi is None else (roi["shape"], roi["geometry"], roi["axis"]))
+        except Exception:
+            logger.debug("ROI overlay update failed", exc_info=True)
 
     def _roi_key(self) -> Optional[tuple]:
         roi = self._roi
@@ -2039,6 +2052,17 @@ class ViewerController:
         st.y_index = int(y)
         st.z_index = int(z)
         self._render_viewer_views()
+
+    def on_viewer_roi_set(self, shape: str, geometry: Sequence[float], axis: int) -> None:
+        """A ROI drag ended on the Viewer tab: set it on the shown slice of ``axis``."""
+        try:
+            self.set_roi(shape, geometry, axis=int(axis))
+        except ValueError as exc:
+            logger.info("ROI not set: %s", exc)
+            self._publish_roi()
+
+    def on_viewer_roi_clear(self) -> None:
+        self.clear_roi()
 
     def on_viewer_crosshair_toggle(self, enabled: bool) -> None:
         self.state.viewer.show_crosshair = bool(enabled)

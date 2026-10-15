@@ -342,6 +342,12 @@ class MainWindow(ttk.Frame):
                 layers=layers,
             )
 
+    def set_viewer_roi(self, roi: tuple[str, tuple[float, ...], int] | None) -> None:
+        tab = self.tabs.get_tab("Viewer")
+        target = getattr(tab, "_tab_instance", None)
+        if target is not None and hasattr(target, "right"):
+            target.right.set_roi(roi)
+
     def set_viewer_subject_enabled(self, enabled: bool) -> None:
         tab = self.tabs.get_tab("Viewer")
         target = getattr(tab, "_tab_instance", None)

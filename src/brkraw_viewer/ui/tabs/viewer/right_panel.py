@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional
 
+from brkraw_viewer.core.roi import ROI_TOOLS, RoiDrag, plane_axis
 from brkraw_viewer.ui.components.viewport import ViewportCanvas
 
 
@@ -21,6 +22,7 @@ class ViewerRightPanel(ttk.Frame):
         axis_bar.columnconfigure(0, weight=1)
         axis_bar.columnconfigure(1, weight=1)
         axis_bar.columnconfigure(2, weight=1)
+        axis_bar.columnconfigure(3, weight=0)
 
         def _axis_box(parent: tk.Misc, axis: str, var: tk.IntVar, on_change, column: int):
             pad_x = (0, 6) if column < 2 else (0, 0)
@@ -64,6 +66,22 @@ class ViewerRightPanel(ttk.Frame):
         self._z_scale = _axis_box(axis_bar, "Z", self._z_var, lambda v: self._on_axis(callbacks, "z", v), 1)
         self._x_scale = _axis_box(axis_bar, "X", self._x_var, lambda v: self._on_axis(callbacks, "x", v), 2)
 
+        # ROI tool: off / square / circle. Drag on a view draws the shape, release sets the ROI.
+        self._roi_drag = RoiDrag()
+        self._roi_previewed = False
+        self._roi_tool_var = tk.StringVar(value="off")
+        roi_box = ttk.Frame(axis_bar)
+        roi_box.grid(row=0, column=3, sticky="n", padx=(6, 4), pady=4)
+        ttk.Label(roi_box, text="ROI").pack(side=tk.LEFT, padx=(0, 4))
+        for tool in ROI_TOOLS:
+            ttk.Radiobutton(
+                roi_box,
+                text=tool.capitalize(),
+                value=tool,
+                variable=self._roi_tool_var,
+                command=self._on_roi_tool,
+            ).pack(side=tk.LEFT, padx=(0, 2))
+
         viewer_host = ttk.Frame(self)
         viewer_host.grid(row=1, column=0, sticky="nsew")
         viewer_host.columnconfigure(0, weight=1)
@@ -92,6 +110,13 @@ class ViewerRightPanel(ttk.Frame):
         self._xz.set_capture_callback(lambda: self._on_view_capture("xz", self._xz))
         self._xy.set_capture_callback(lambda: self._on_view_capture("xy", self._xy))
         self._zy.set_capture_callback(lambda: self._on_view_capture("zy", self._zy))
+
+        self._views = {"xz": self._xz, "xy": self._xy, "zy": self._zy}
+        for plane, vp in self._views.items():
+            vp.bind_canvas("<ButtonPress-1>", lambda e, p=plane: self._on_roi_press(p, e))
+            vp.bind_canvas("<B1-Motion>", lambda e, p=plane: self._on_roi_move(p, e))
+            vp.bind_canvas("<ButtonRelease-1>", lambda e, p=plane: self._on_roi_release(p, e))
+            vp.bind_canvas("<Escape>", lambda _e: self._on_roi_escape())
 
         bottom_bar = ttk.Frame(self)
         bottom_bar.grid(row=2, column=0, sticky="ew", pady=(6, 0))
@@ -209,6 +234,86 @@ class ViewerRightPanel(ttk.Frame):
         handler = getattr(self._callbacks, "on_viewer_extra_dim_change", None)
         if callable(handler):
             handler(int(index), int(float(value)))
+
+    # ----- ROI tool -----
+
+    def _on_roi_tool(self) -> None:
+        tool = self._roi_tool_var.get()
+        self._roi_drag.set_tool(tool)
+        for vp in self._views.values():
+            vp.set_click_enabled(tool == "off")  # voxel click only while the tool is off
+        if tool == "off":
+            self._clear_roi()
+
+    def _roi_rc(self, plane: str, event):
+        return self._views[plane].canvas_to_image(int(event.x), int(event.y))
+
+    def _on_roi_press(self, plane: str, event) -> None:
+        rc = self._roi_rc(plane, event)
+        if rc is None:
+            return
+        if self._roi_drag.press(plane, rc[0], rc[1]):
+            try:
+                self._views[plane].focus_set()
+                self._views[plane]._canvas.focus_set()
+            except Exception:
+                pass
+
+    def _on_roi_move(self, plane: str, event) -> None:
+        rc = self._roi_rc(plane, event)
+        if rc is None:
+            return
+        shown = self._roi_drag.move(plane, rc[0], rc[1])
+        if shown is not None:
+            self._roi_previewed = True
+            _plane, shape, (r0, r1, c0, c1) = shown
+            self._show_only(plane)
+            self._views[plane].set_shape_overlay(shape, r0, r1, c0, c1)
+
+    def _on_roi_release(self, plane: str, event) -> None:
+        if not self._roi_drag.dragging:
+            return
+        rc = self._roi_rc(plane, event)
+        done = self._roi_drag.release(plane, rc[0], rc[1]) if rc is not None else None
+        if rc is None:
+            self._roi_drag.cancel()
+        if done is None:
+            if self._roi_previewed or rc is None:
+                self._on_roi_escape()  # the drag left no ROI: drop its preview and any older ROI
+            self._roi_previewed = False
+            return
+        self._roi_previewed = False
+        axis, shape, geometry = done
+        handler = getattr(self._callbacks, "on_viewer_roi_set", None)
+        if callable(handler):
+            handler(shape, geometry, axis)
+
+    def _on_roi_escape(self) -> None:
+        self._roi_drag.cancel()
+        self._clear_roi()
+
+    def _clear_roi(self) -> None:
+        for vp in self._views.values():
+            vp.clear_shape_overlay()
+        handler = getattr(self._callbacks, "on_viewer_roi_clear", None)
+        if callable(handler):
+            handler()
+
+    def _show_only(self, plane: str) -> None:
+        for name, vp in self._views.items():
+            if name != plane:
+                vp.clear_shape_overlay()
+
+    def set_roi(self, roi) -> None:
+        """Draw the controller's ROI (shape, geometry, axis) on the plane of its axis; None clears."""
+        from brkraw_viewer.core.roi import roi_extent
+
+        for plane, vp in self._views.items():
+            if roi is not None and plane_axis(plane) == roi[2]:
+                r0, r1, c0, c1 = roi_extent(plane, roi[0], roi[1])
+                vp.set_shape_overlay(roi[0], r0, r1, c0, c1)
+            else:
+                vp.clear_shape_overlay()
 
     def _on_view_click(self, plane: str, row: int, col: int) -> None:
         handler = getattr(self._callbacks, "on_viewer_jump", None)

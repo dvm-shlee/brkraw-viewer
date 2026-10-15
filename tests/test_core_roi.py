@@ -104,3 +104,84 @@ def test_volume_with_oblique_anisotropic_affine_and_outside_layer():
     assert st["volume_mm3"] == pytest.approx(12 * voxel)
     assert st["mask_mm3"] == pytest.approx(30 * voxel)
     assert st["mean"] == pytest.approx(layer[:, :, 1].mean())
+
+
+# roi_mask: one entry point for rect/ellipse, clipped to the display slice (WI-0004).
+
+def _brute_ellipse(shape, cu, cv, ru, rv):
+    u, v = np.meshgrid(np.arange(shape[0]), np.arange(shape[1]), indexing="ij")
+    return ((u - cu) / ru) ** 2 + ((v - cv) / rv) ** 2 <= 1.0
+
+
+def test_roi_mask_rect_matches_rect_mask():
+    m = roi.roi_mask("rect", (5, 6), (1, 2.5, 0, 1))
+    assert m.dtype == bool and m.shape == (5, 6)
+    np.testing.assert_array_equal(m, roi.rect_mask((5, 6), 1, 2.5, 0, 1))
+    np.testing.assert_array_equal(roi.roi_mask("rect", (5, 6), (2.5, 1, 1, 0)), m)  # corners in either order
+
+
+def test_roi_mask_ellipse_matches_ellipse_mask():
+    m = roi.roi_mask("ellipse", (7, 5), (3, 2, 3, 1))
+    assert m.dtype == bool and m.shape == (7, 5)
+    np.testing.assert_array_equal(m, roi.ellipse_mask((7, 5), 3, 2, 3, 1))
+    assert int(m.sum()) == 9
+
+
+def test_roi_mask_rect_partly_outside_is_clipped():
+    # u in [-2, 1] keeps rows 0-1; v in [3, 9] keeps columns 3-4 of a 5x5 slice
+    m = roi.roi_mask("rect", (5, 5), (-2, 1, 3, 9))
+    assert m.shape == (5, 5)
+    assert sorted(zip(*np.nonzero(m))) == [(0, 3), (0, 4), (1, 3), (1, 4)]
+
+
+def test_roi_mask_ellipse_partly_outside_is_clipped():
+    m = roi.roi_mask("ellipse", (5, 5), (0, 0, 2, 2))
+    assert m.shape == (5, 5) and m.dtype == bool
+    brute = _brute_ellipse((5, 5), 0, 0, 2, 2)
+    np.testing.assert_array_equal(m, brute)
+    assert int(m.sum()) == 6  # (0,0), (0,1), (0,2), (1,0), (1,1), (2,0): only the in-slice part
+    assert m[0, 0] and not m[4, 4]
+
+
+@pytest.mark.parametrize("geometry", [(10, 12, 0, 1), (-9, -7, -9, -7), (5, 6, 0, 4)])
+def test_roi_mask_rect_fully_outside_is_empty(geometry):
+    m = roi.roi_mask("rect", (5, 5), geometry)
+    assert m.shape == (5, 5) and m.dtype == bool and not m.any()
+
+
+@pytest.mark.parametrize("geometry", [(-20, -20, 2, 2), (30, 2, 1.5, 1.5)])
+def test_roi_mask_ellipse_fully_outside_is_empty(geometry):
+    m = roi.roi_mask("ellipse", (5, 5), geometry)
+    assert m.shape == (5, 5) and m.dtype == bool and not m.any()
+
+
+def test_roi_mask_accepts_numpy_slice_shape_and_geometry():
+    m = roi.roi_mask("rect", (np.int64(4), np.int32(3)), np.array([0, 3, 0, 2]))
+    assert m.shape == (4, 3) and m.all()
+
+
+def test_roi_mask_invalid_shape_raises():
+    with pytest.raises(ValueError, match="shape"):
+        roi.roi_mask("square", (5, 5), (0, 1, 0, 1))
+    with pytest.raises(ValueError, match="shape"):
+        roi.roi_mask("Rect", (5, 5), (0, 1, 0, 1))
+
+
+def test_roi_mask_bad_geometry_or_slice_raises():
+    with pytest.raises(ValueError, match="4 values"):
+        roi.roi_mask("rect", (5, 5), (0, 1, 0))
+    with pytest.raises(ValueError, match="finite"):
+        roi.roi_mask("ellipse", (5, 5), (float("nan"), 1, 1, 1))
+    with pytest.raises(ValueError, match="radius"):
+        roi.roi_mask("ellipse", (5, 5), (2, 2, 0, 1))
+    with pytest.raises(ValueError, match="slice_shape"):
+        roi.roi_mask("rect", (5,), (0, 1, 0, 1))
+    with pytest.raises(ValueError, match="shape"):
+        roi.roi_mask("rect", (0, 5), (0, 1, 0, 1))
+
+
+def test_roi_mask_is_exported_from_core():
+    from brkraw_viewer import core
+
+    assert core.roi_mask is roi.roi_mask
+    assert "roi_mask" in core.__all__

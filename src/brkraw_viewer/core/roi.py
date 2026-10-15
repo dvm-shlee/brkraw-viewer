@@ -8,6 +8,46 @@ import numpy as np
 ROI_SHAPES = ("rect", "ellipse")
 
 
+def drag_geometry(tool: str, start_uv: Tuple[float, float], end_uv: Tuple[float, float]) -> Tuple[str, Tuple[float, ...]]:
+    """Turn a drag operation into an ROI shape and geometry.
+
+    Parameters
+    ----------
+    tool : str
+        'square' or 'circle'.
+    start_uv : (u, v)
+        Start point of the drag in pixels.
+    end_uv : (u, v)
+        End point of the drag in pixels.
+
+    Returns
+    -------
+    (shape, geometry)
+        For 'square': ('rect', (u0, u1, v0, v1)) where u0, u1 are min/max of u, etc.
+        For 'circle': ('ellipse', (cu, cv, r, r)) where (cu, cv) is the center and r is
+        half the distance between start and end.
+
+    Raises
+    ------
+    ValueError
+        If tool is not 'square' or 'circle', or if start and end points are identical.
+    """
+    u0, v0 = start_uv
+    u1, v1 = end_uv
+
+    if u0 == u1 and v0 == v1:
+        raise ValueError("drag start and end points must be different")
+
+    if tool == "square":
+        return "rect", (min(u0, u1), max(u0, u1), min(v0, v1), max(v0, v1))
+    if tool == "circle":
+        cu, cv = (u0 + u1) / 2, (v0 + v1) / 2
+        r = math.sqrt((u1 - u0)**2 + (v1 - v0)**2) / 2
+        return "ellipse", (cu, cv, r, r)
+
+    raise ValueError(f"unknown tool {tool!r}; expected 'square' or 'circle'")
+
+
 def roi_mask(shape: str, slice_shape: Tuple[int, int], geometry: Sequence[float]) -> np.ndarray:
     """Boolean mask of a temporary ROI on one display slice, clipped to the slice.
 

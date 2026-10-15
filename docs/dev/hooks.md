@@ -46,6 +46,23 @@ by extensions; they are not a versioned API:
 - `app.state.dataset.selected_scan_id` and `app.state.dataset.selected_reco_id`:
   the current selection
 - `app.dataset.get_scan(scan_id)`: the BrkRaw scan object
+- Temporary ROI (**provisional**, may change; the stage-4 handle is separate):
+  - `app.set_roi(shape, geometry, axis=2, index=None)`: `shape` is `"rect"`
+    (`geometry = (u0, u1, v0, v1)`, inclusive pixels) or `"ellipse"`
+    (`(cu, cv, ru, rv)`: centre and radii). Pixels are those of display slice
+    `index` (default: the shown one) on `axis` (0, 1 or 2 of the RAS-reoriented
+    grid), laid out like `volume.take(index, axis)`. A ROI past the slice edge is
+    clipped. Raises `ValueError` for a bad shape, geometry or index, or with no
+    image loaded. The ROI mean per frame is requested from the worker and shown in
+    the Timecourse plot (title: shape and voxel count).
+  - `app.clear_roi()`: remove it; the plot returns to the voxel timecourse.
+  - `app.roi_timecourse()`: `None` until the answer is in; then a dict with
+    `values` (mean of the finite voxels per frame, NaN for a frame with none),
+    `n_mask`, `n_per_frame`, `shape`, `axis`, `index`.
+
+  Only one ROI exists and it is never saved. It is cleared when the dataset, scan,
+  reco, converter hook or its options, slicepack, flip or the shown slice on its
+  axis changes; an answer for an earlier ROI or state is dropped.
 
 Hooks are loaded when the Extensions tab is built, and the panel is built again
 when you select it from the list or re-attach the tab. The selection is

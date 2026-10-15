@@ -104,6 +104,11 @@ class ViewerController:
         self._timecourse_pending: Optional[tuple] = None
         self._timecourse_series: Optional[tuple] = None  # (request key, values)
         self._timecourse_frames: int = 0
+        # Temporary ROI (WI-0005): one ROI at most, never saved; the answer is the per-frame mean.
+        self._roi: Optional[dict] = None
+        self._roi_job_id: Optional[str] = None
+        self._roi_pending: Optional[tuple] = None
+        self._roi_series: Optional[dict] = None  # {"key", "values", "n_mask", "n_per_frame"}
         self._viewer_space_listeners: list[Callable[[str], None]] = []
         self._frame_cache: "OrderedDict[int, dict]" = OrderedDict()
         self._frame_cache_limit = 8
@@ -443,6 +448,9 @@ class ViewerController:
 
     def _on_timecourse_result(self, result: TimecourseResult) -> None:
         """The worker's answer for one voxel (C9). Older answers are dropped."""
+        if self._roi_job_id is not None and result.job_id == self._roi_job_id:
+            self._on_roi_result(result)
+            return
         if result.job_id != self._timecourse_job_id:
             return
         key = self._timecourse_pending
@@ -954,6 +962,7 @@ class ViewerController:
             rgb_mode=self.state.viewer.rgb_mode,
         )
         self._view.set_viewer_value_display(value_text, plot_enabled=plot_enabled)
+        self._sync_roi()
         self._update_timecourse_plot(indices=(xi, yi, zi))
         if self._view is not None:
             space = self.state.viewer.space
@@ -1121,6 +1130,188 @@ class ViewerController:
         logger.debug("Timecourse request: scan=%s reco=%s index=%s", sid, rid, index)
         self._worker.submit(req)
 
+    # ----- temporary ROI (provisional Python API, WI-0005) -----
+
+    def set_roi(
+        self,
+        shape: str,
+        geometry: Sequence[float],
+        *,
+        axis: int = 2,
+        index: Optional[int] = None,
+    ) -> None:
+        """Set the one temporary ROI and ask for its mean timecourse (provisional API).
+
+        ``shape`` is "rect" (geometry ``(u0, u1, v0, v1)``, inclusive pixels) or "ellipse"
+        (``(cu, cv, ru, rv)``); the pixels are those of the display slice ``index`` on ``axis``
+        (0, 1, 2 of the RAS-reoriented grid), laid out as ``volume.take(index, axis)``. The slice
+        defaults to the shown one. Raises ValueError for bad input or without an image loaded.
+        """
+        from brkraw_viewer.core.roi import roi_mask
+
+        vol = self._viewer_volume
+        if vol is None or np.ndim(vol) < 3:
+            raise ValueError("No image loaded.")
+        axis = int(axis)
+        if axis not in (0, 1, 2):
+            raise ValueError(f"axis must be 0, 1 or 2, got {axis}")
+        st = self.state.viewer
+        names = ("x_index", "y_index", "z_index")
+        idx = int(getattr(st, names[axis]) if index is None else index)
+        n_axis = int(np.shape(vol)[axis])
+        if not 0 <= idx < n_axis:
+            raise ValueError(f"index {idx} is outside the axis (0..{n_axis - 1})")
+        plane = tuple(int(n) for a, n in enumerate(np.shape(vol)[:3]) if a != axis)
+        mask = roi_mask(shape, plane, geometry)  # validates shape and geometry
+        self._drop_roi()
+        setattr(st, names[axis], idx)
+        self._roi = {
+            "shape": str(shape),
+            "geometry": tuple(float(g) for g in geometry),
+            "axis": axis,
+            "index": idx,
+            "mask": mask,
+        }
+        self._request_roi()
+        self._render_viewer_views()
+
+    def clear_roi(self) -> None:
+        """Remove the temporary ROI and show the voxel timecourse again."""
+        had = self._roi is not None
+        self._drop_roi()
+        if had:
+            self._render_viewer_views()
+
+    def roi_timecourse(self) -> Optional[dict]:
+        """The ROI's mean per frame once the worker has answered, else None (provisional API).
+
+        Keys: ``values`` (mean of the finite voxels per frame), ``n_mask`` (voxels in the mask),
+        ``n_per_frame``, ``shape``, ``axis``, ``index``. None without a ROI or while the answer
+        is pending or no longer current.
+        """
+        roi, ans = self._roi, self._roi_series
+        if roi is None or ans is None or ans["key"] != self._roi_key():
+            return None
+        return {
+            "values": list(ans["values"]),
+            "n_mask": int(ans["n_mask"]),
+            "n_per_frame": list(ans["n_per_frame"]),
+            "shape": roi["shape"],
+            "axis": roi["axis"],
+            "index": roi["index"],
+        }
+
+    def _drop_roi(self) -> None:
+        self._roi = None
+        self._roi_job_id = None
+        self._roi_pending = None
+        self._roi_series = None
+
+    def _roi_key(self) -> Optional[tuple]:
+        roi = self._roi
+        if roi is None:
+            return None
+        base = self._timecourse_key((-1, -1, -1))
+        if base is None:
+            return None
+        return base + ("roi", roi["shape"], roi["geometry"], roi["axis"], roi["index"])
+
+    def _request_roi(self) -> None:
+        roi = self._roi
+        key = self._roi_key()
+        if roi is None or key is None or key == self._roi_pending:
+            return
+        (path, sid, rid, slicepack, space, subject_type, subject_pose, fx, fy, fz, _i, extra, hook) = key[:13]
+        job_id = f"roitc-{dt.datetime.now().timestamp()}"
+        self._roi_job_id = job_id
+        self._roi_pending = key
+        self._roi_series = None
+        self._worker.submit(
+            TimecourseRequest(
+                job_id=job_id,
+                path=path,
+                scan_id=sid,
+                reco_id=rid,
+                extra_indices=extra,
+                slicepack_index=slicepack,
+                space=space,
+                subject_type=subject_type,
+                subject_pose=subject_pose,
+                flip_x=fx,
+                flip_y=fy,
+                flip_z=fz,
+                roi_axis=roi["axis"],
+                roi_index=roi["index"],
+                roi_mask=roi["mask"],
+                hook_name=hook[0] if hook else None,
+                hook_args=dict(self._viewer_hook_args or {}) if hook else None,
+            )
+        )
+        logger.debug("ROI timecourse request: scan=%s reco=%s %s n=%s", sid, rid, roi["shape"], int(roi["mask"].sum()))
+
+    def _on_roi_result(self, result: TimecourseResult) -> None:
+        key = self._roi_pending
+        self._roi_job_id = None
+        self._roi_pending = None
+        if result.error or result.values is None:
+            self._roi_series = None
+            msg = f"ROI timecourse failed: {result.error or 'no data'}"
+            if self._timecourse_plot is not None:
+                self._timecourse_plot.set_message(msg)
+            if self._view is not None:
+                self._view.set_status(msg)
+            return
+        self._roi_series = {
+            "key": key,
+            "values": list(result.values),
+            "n_mask": int(result.n_mask),
+            "n_per_frame": list(result.n_per_frame or []),
+        }
+        self._timecourse_frames = int(result.frames or len(result.values))
+        self._update_timecourse_plot()
+
+    def _sync_roi(self) -> None:
+        """After a render: keep the ROI only while it still matches what is shown."""
+        roi = self._roi
+        if roi is None:
+            return
+        vol = self._viewer_volume
+        axis = roi["axis"]
+        if vol is None or np.ndim(vol) < 3:
+            self._drop_roi()
+            return
+        plane = tuple(int(n) for a, n in enumerate(np.shape(vol)[:3]) if a != axis)
+        shown = int((self.state.viewer.x_index, self.state.viewer.y_index, self.state.viewer.z_index)[axis])
+        if plane != tuple(roi["mask"].shape) or shown != roi["index"]:
+            logger.info("ROI cleared: the shown slice or grid changed.")
+            self._drop_roi()
+            return
+        if self._roi_series is None or self._roi_series["key"] != self._roi_key():
+            self._request_roi()  # e.g. another index of an extra dimension
+
+    def _update_roi_plot(self) -> None:
+        plot, roi = self._timecourse_plot, self._roi
+        if plot is None or roi is None:
+            return
+        ans = self._roi_series
+        if ans is None or ans["key"] != self._roi_key():
+            plot.set_message("Loading ROI timecourse...")
+            return
+        try:
+            from brkraw_viewer.ui.components.plotter import PlotMeta
+        except Exception:
+            PlotMeta = None
+        y = np.asarray(ans["values"], dtype=float)
+        label = f"ROI mean ({roi['shape']}, {int(ans['n_mask'])} voxels)"
+        meta = PlotMeta(title=label, x_label="Frame", y_label="") if PlotMeta else None
+        plot.set_lines(
+            x=list(range(len(y))),
+            ys=cast("Sequence[Sequence[float]]", [y]),
+            meta=meta,
+            y_fmt=lambda v: f"{v:.1E}",
+        )
+        plot.set_vline(float(self.state.viewer.frame_index))
+
     def _request_full_viewer_volume(self) -> None:
         if self.state.dataset.path is None:
             return
@@ -1188,6 +1379,7 @@ class ViewerController:
         self._timecourse_pending = None
         self._timecourse_series = None
         self._timecourse_frames = 0
+        self._drop_roi()
 
     def _clear_frame_cache(self) -> None:
         self._frame_cache.clear()
@@ -1768,6 +1960,7 @@ class ViewerController:
                 allow_toggle=not self._viewer_hook_locked,
             )
         self._clear_frame_cache()
+        self._drop_roi()
         self._ask_again_for_current_request()
         self._request_viewer_volume()
 
@@ -1781,6 +1974,7 @@ class ViewerController:
             st.flip_y = bool(enabled)
         elif axis_norm == "z":
             st.flip_z = bool(enabled)
+        self._drop_roi()
         self._clear_frame_cache()
         if self._viewer_raw_volume is not None:
             affine = None
@@ -1827,6 +2021,7 @@ class ViewerController:
 
     def on_viewer_slicepack_change(self, value: int) -> None:
         self.state.viewer.slicepack_index = int(value)
+        self._drop_roi()
         self._clear_frame_cache()
         self._request_viewer_volume()
 
@@ -2049,6 +2244,9 @@ class ViewerController:
         if vol is None:
             self._timecourse_plot.set_message("No data")
             return
+        if self._roi is not None:
+            self._update_roi_plot()
+            return
         data = np.asarray(vol)
         if indices is None:
             indices = (
@@ -2113,6 +2311,7 @@ class ViewerController:
 
     def on_viewer_hook_args_change(self, hook_args: Optional[dict]) -> None:
         logger.debug("Viewer hook args change: %s", bool(hook_args))
+        self._drop_roi()
         self._viewer_hook_args = hook_args
         if self._viewer_hook_name:
             if hook_args is None:

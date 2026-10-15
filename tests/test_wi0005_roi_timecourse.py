@@ -2,6 +2,36 @@
 
 Controller and worker are wired in one process; the scan is a synthetic 4D phantom whose ROI mean
 per frame is known. ``set_roi`` / ``clear_roi`` / ``roi_timecourse`` are the provisional API.
+
+Requirement traceability (notes/requirements/viewer-roi-timecourse.md, quoted):
+
+R1 "Controller (Tk-free, unit-testable): set/clear one temporary ROI {shape rect|ellipse, axis, slice
+   index, geometry in display-slice pixels}; build the mask with core/roi; send a ROI timecourse
+   request; show the result in the existing timecourse plot (label with shape and voxel count). Late
+   or stale answers are dropped like voxel answers. Changing scan, reco, hook/options or slice clears
+   or re-requests the ROI; no silent mismatch."
+   - Tk-free: the ROI path (set_roi, clear_roi, roi_timecourse, the request and the plot meta) imports
+     no tkinter; this module runs without a display.
+   - set/clear, rect|ellipse, axis, index, geometry: test_rect_roi_mean_per_frame_is_the_known_mean,
+     test_ellipse_roi_and_other_axis, test_clear_roi_returns_to_the_voxel_timecourse,
+     test_bad_input_is_refused_and_keeps_the_old_roi, test_set_roi_without_an_image_raises.
+   - mask from core/roi sent as TimecourseRequest.roi_mask: test_roi_request_carries_the_mask
+     (compared with ``brkraw_viewer.core.roi.roi_mask``).
+   - plot label with shape and voxel count: test_roi_is_plotted_with_shape_and_voxel_count.
+   - stale answers dropped: test_stale_answer_is_dropped, test_answer_after_clear_is_dropped.
+   - clear on scan / reco / hook options (also slicepack, flip) / slice change:
+     test_scan_change_clears_the_roi, test_reco_selection_clears_the_roi,
+     test_hook_options_slicepack_and_flip_clear_the_roi, test_slice_change_clears_the_roi.
+   - voxel flow unchanged: test_voxel_timecourse_still_works_without_a_roi.
+R3 "Python API (public, documented, small): e.g. set_roi(shape, ...), clear_roi(), roi_timecourse()
+   on the controller handle given to viewer hooks; mark it provisional in docs/dev/hooks.md. No other
+   public API changes."
+   - ViewerController.set_roi / clear_roi / roi_timecourse, documented as **provisional** in
+     docs/dev/hooks.md ("Temporary ROI"); no other public signature changed.
+R4 "Tests: synthetic data only, no display needed for controller/core tests; a 4D phantom with a
+   known ROI mean per frame; stale-answer drop; clear on scan change."
+   - PHANTOM below (value = 1000 * frame + position code) gives the expected mean per frame; no
+     display, no real data; stale drop and scan-change clear as listed under R1.
 """
 
 from __future__ import annotations

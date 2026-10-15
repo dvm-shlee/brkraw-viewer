@@ -6,7 +6,8 @@ import json
 import re
 from collections import OrderedDict
 from pathlib import Path
-from typing import Optional, Union, Callable, Sequence, cast
+from types import SimpleNamespace
+from typing import Any, Optional, Union, Callable, Sequence, cast
 
 from .helper import (
     flatten_keys as _flatten_keys,
@@ -1297,17 +1298,15 @@ class ViewerController:
         if ans is None or ans["key"] != self._roi_key():
             plot.set_message("Loading ROI timecourse...")
             return
-        try:
-            from brkraw_viewer.ui.components.plotter import PlotMeta
-        except Exception:
-            PlotMeta = None
         y = np.asarray(ans["values"], dtype=float)
         label = f"ROI mean ({roi['shape']}, {int(ans['n_mask'])} voxels)"
-        meta = PlotMeta(title=label, x_label="Frame", y_label="") if PlotMeta else None
+        # Duck-typed meta (title/x_label/y_label, same fields as the UI PlotMeta)
+        # so this controller path never imports Tk.
+        meta = SimpleNamespace(title=label, x_label="Frame", y_label="")
         plot.set_lines(
             x=list(range(len(y))),
             ys=cast("Sequence[Sequence[float]]", [y]),
-            meta=meta,
+            meta=cast("Any", meta),
             y_fmt=lambda v: f"{v:.1E}",
         )
         plot.set_vline(float(self.state.viewer.frame_index))

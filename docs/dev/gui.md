@@ -43,3 +43,17 @@ controller into smaller components.
 `uv run --locked --extra dev pytest` runs the synthetic tests (no Tk window and
 no real dataset). The GUI smoke test runs only with `BRKRAW_VIEWER_SMOKE=1` and a
 display, and the installed-ecosystem test only with `BRKRAW_ECOSYSTEM_CONTRACT=1`.
+
+### Manual look: ROI tool
+
+The Tk parts of the ROI tool (WI-0002) have no automated test; the drag logic, plane mapping and
+controller wiring do (`tests/test_wi0002_roi_tool.py`). Check by hand with a 4D scan:
+
+- Off / Square / Circle buttons above the views; Off by default, and clicking a view still
+  moves the crosshair.
+- With Square or Circle, a click does not move the crosshair; dragging draws the outline in
+  that view only, and it follows the pointer; zoom (Shift + wheel) keeps it on the same pixels.
+- Release: outline stays, the Timecourse window shows "ROI mean (shape, N voxels)".
+- Scroll the slice of that view: outline and ROI disappear. Other views keep their slice.
+- Esc over a view and choosing Off remove the outline and restore the voxel timecourse.
+- Check all three views (X-Z, X-Y, Z-Y): the voxels counted match the outlined pixels.

@@ -75,6 +75,27 @@ The status line under the views shows space, hook, zoom, RGB, crosshair and slic
 Tabs can be detached into their own window and re-attached from the right-click menu on
 the tab title. The icon at the right of the main status bar opens the worker log.
 
+## ROI timecourse
+
+The **ROI** buttons above the views (Off, Square, Circle) draw a temporary region of interest
+on one view and plot its mean timecourse.
+
+1. Choose **Square** or **Circle**. While a tool is on, clicking a view does not move the
+   crosshair.
+2. Press in a view and drag: the shape is drawn as you move. A square spans the two corners
+   of the drag; a circle has the drag as its diameter.
+3. Release the button: the ROI is set on the slice shown in that view, and the Timecourse
+   window (open it with the **Value** button) shows the mean of the voxels inside the ROI for
+   each frame. The title gives the shape and the voxel count.
+4. **Esc** (with the pointer or focus on a view) or choosing **Off** removes the ROI; the plot
+   returns to the voxel timecourse. With the tool off, clicking works as before.
+
+Limits: one ROI at a time, in 2D on one slice of one view, never saved. It is cleared when you
+change the slice on its axis (scrolling, the sliders, a click in another view), the scan,
+reconstruction, hook or hook options, slicepack or flip. Changing the frame does not clear it.
+A drag that is only a click sets nothing. Values that are not finite are left out of the mean.
+Python access is described under [Viewer hooks](../dev/hooks.md) (provisional).
+
 ## Registry
 
 Open the registry window from the toolbar to browse registered datasets, add or
@@ -86,7 +107,8 @@ open. The `+` menu can also add a study folder or an archive file.
 
 - One image volume is shown at a time. The layer core (grids, resampling, layer
   composition, ROI statistics) exists in `brkraw_viewer.core`, but the Viewer tab has
-  no controls for extra layers or ROIs yet; label editing is planned.
+  no controls for extra layers yet and only the temporary 2D ROI timecourse above;
+  label editing is planned.
 - Brightness is one range per frame as described under [Views](#views); there is no
   window/level control yet.
 - Extensions cannot draw on the Viewer tab; they add a panel in the Extensions tab.

@@ -177,6 +177,10 @@ class ViewportCanvas(ttk.Frame):
         self._boxes: List[int] = []
         self._marker_data: List[Tuple[int, int, str]] = []
         self._box_data: List[Tuple[int, int, int, int, str, int]] = []
+        # One temporary shape (ROI): (shape, row0, row1, col0, col1, color) in pixel-edge image space.
+        self._shape_data: Optional[Tuple[str, float, float, float, float, str]] = None
+        self._shape_id: Optional[int] = None
+        self._click_enabled = True
         self._pan_offset = (0.0, 0.0)
         self._last_cursor: Optional[Tuple[int, int]] = None
         self._focus_rc: Optional[Tuple[int, int]] = None
@@ -615,6 +619,44 @@ class ViewportCanvas(ttk.Frame):
         self._boxes.append(bid)
         self._box_data.append((int(row0), int(col0), int(row1), int(col1), str(color), int(width)))
 
+    def set_click_enabled(self, enabled: bool) -> None:
+        """Turn the voxel-click callback off while a drawing tool owns the left button."""
+        self._click_enabled = bool(enabled)
+
+    def set_shape_overlay(
+        self, shape: str, row0: float, row1: float, col0: float, col1: float, *, color: str = "#ffcc00"
+    ) -> None:
+        """Draw one temporary 'rect' or 'ellipse' given by its pixel-edge extent (image space)."""
+        if shape not in ("rect", "ellipse"):
+            raise ValueError("shape must be 'rect' or 'ellipse'")
+        self._shape_data = (str(shape), float(row0), float(row1), float(col0), float(col1), str(color))
+        self._draw_shape()
+
+    def clear_shape_overlay(self) -> None:
+        self._shape_data = None
+        self._draw_shape()
+
+    def _draw_shape(self) -> None:
+        if self._shape_id is not None:
+            try:
+                self._canvas.delete(self._shape_id)
+            except Exception:
+                pass
+            self._shape_id = None
+        state = self._render_state
+        if self._shape_data is None or state is None:
+            return
+        img_h, img_w, ox, oy, tw, th = state
+        if img_h <= 0 or img_w <= 0:
+            return
+        shape, r0, r1, c0, c1, color = self._shape_data
+        x0 = ox + c0 * tw / img_w
+        x1 = ox + c1 * tw / img_w
+        y0 = oy + (img_h - r1) * th / img_h
+        y1 = oy + (img_h - r0) * th / img_h
+        make = self._canvas.create_oval if shape == "ellipse" else self._canvas.create_rectangle
+        self._shape_id = make(x0, y0, x1, y1, outline=color, width=2)
+
     def clear_overlays(self) -> None:
         self._last_overlay = None
         self._render()
@@ -640,7 +682,7 @@ class ViewportCanvas(ttk.Frame):
         self._resize_job = self.after(16, self._render)
 
     def _on_click(self, event: tk.Event) -> None:
-        if self._click_cb is None:
+        if self._click_cb is None or not self._click_enabled:
             return
         rc = self.canvas_to_image(int(event.x), int(event.y))
         if rc is None:
@@ -754,6 +796,7 @@ class ViewportCanvas(ttk.Frame):
         self._brush_preview_tk_img = None
         self._markers = []
         self._boxes = []
+        self._shape_id = None
 
         if self._last_base is None:
             return
@@ -868,6 +911,7 @@ class ViewportCanvas(ttk.Frame):
             self.add_marker(r, c, color)
         for r0, c0, r1, c1, color, width in self._box_data:
             self.add_box(r0, c0, r1, c1, color=color, width=width)
+        self._draw_shape()
 
     def _render_overlay_layer(self) -> None:
         if self._overlay_rgba is None:

@@ -60,6 +60,11 @@ by extensions; they are not a versioned API:
     `values` (mean of the finite voxels per frame, NaN for a frame with none),
     `n_mask`, `n_per_frame`, `shape`, `axis`, `index`.
 
+  The Viewer tab's ROI tool (Off / Square / Circle, see the user guide) calls the same
+  `set_roi` on release and `clear_roi` on Esc or tool off; the overlay follows the
+  controller, so a ROI set from Python is drawn on the view of its axis too. A drag
+  gives `"rect"` `(u0, u1, v0, v1)` or, for the circle tool, `"ellipse"` `(cu, cv, r, r)`.
+
   Only one ROI exists and it is never saved. It is cleared when the dataset, scan,
   reco, converter hook or its options, slicepack, flip or the shown slice on its
   axis changes; an answer for an earlier ROI or state is dropped.

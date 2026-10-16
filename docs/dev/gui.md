@@ -47,7 +47,7 @@ display, and the installed-ecosystem test only with `BRKRAW_ECOSYSTEM_CONTRACT=1
 ### Manual look: ROI tool
 
 The Tk parts of the ROI tool (WI-0002) have no automated test; the drag logic, plane mapping and
-controller wiring do (`tests/test_wi0002_roi_tool.py`). Check by hand with a 4D scan:
+controller wiring do (`tests/test_mkj_wi0002_roi_tool.py`). Check by hand with a 4D scan:
 
 - Off / Square / Circle buttons above the views; Off by default, and clicking a view still
   moves the crosshair.

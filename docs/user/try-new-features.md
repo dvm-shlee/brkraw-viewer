@@ -61,27 +61,69 @@ EN: Pick the tool with the **ROI** buttons above the views.
 
 ## 6. Python API (잠정 / provisional)
 
-KO: 컨트롤러 메서드 `set_roi`, `clear_roi`, `roi_timecourse` (`app/controller/viewer.py`). `<YOUR_DATA>`를 불러온 `ViewerController` 인스턴스 `ctl`이 있을 때 실행합니다. `roi_timecourse()`는 worker가 답하기 전에는 `None`을 돌려주므로 dict가 나올 때까지 다시 호출합니다.
-EN: Run with a `ViewerController` instance `ctl` that has `<YOUR_DATA>` loaded. `roi_timecourse()` returns `None` until the worker has answered, so call it again until it returns a dict.
+KO: ROI API는 컨트롤러 메서드 `set_roi`, `clear_roi`, `roi_timecourse`(`app/controller/viewer.py`)이며, viewer hook의 `build_tab(parent, app)`이 받는 `app`으로 호출합니다(`docs/dev/hooks.md`). worker의 답은 GUI 이벤트 루프를 통해 들어오므로 `sleep` 루프로 기다리면 안 됩니다(GUI가 멈추고 답이 오지 않습니다). 아래처럼 버튼으로 확인하거나 `parent.after(200, poll)`로 다시 확인합니다.
+EN: The ROI API is the controller's `set_roi`, `clear_roi` and `roi_timecourse` (`app/controller/viewer.py`), reached through the `app` a viewer hook's `build_tab(parent, app)` receives (`docs/dev/hooks.md`). The worker's answer arrives through the GUI event loop, so never wait in a sleep loop (it freezes the GUI and the answer never arrives); check with a button, or again later with `parent.after(200, poll)`.
 
-```python
-import time
+KO: 1) 아래 두 파일로 작은 hook 패키지를 만들고 같은 가상환경에 설치합니다. EN: 1) Create a small hook package from the two files below and install it into the same venv.
 
-ctl.set_roi("rect", (10, 20, 10, 20), axis=2)   # (u0, u1, v0, v1), inclusive pixels
-res = ctl.roi_timecourse()
-for _ in range(50):                             # None while the worker is computing
-    if res is not None:
-        break
-    time.sleep(0.2)   # with the GUI running, its event loop also needs to run
-    res = ctl.roi_timecourse()
-if res is not None:
-    print(res["n_mask"], res["values"][:5])
-ctl.set_roi("ellipse", (15, 15, 5, 5), axis=2)  # (cu, cv, ru, rv)
-ctl.clear_roi()
+`try-roi-hook/pyproject.toml`:
+
+```toml
+[project]
+name = "try-roi-hook"
+version = "0.0.1"
+
+[project.entry-points."brkraw.viewer.hook"]
+try-roi = "try_roi_hook:TryRoiHook"
 ```
 
-- 기대 결과 / Expected: KO: `roi_timecourse()`는 `values`, `n_mask`, `n_per_frame`, `shape`, `axis`, `index`를 가진 dict를 돌려주고, ROI가 없거나 worker 응답 전이면 `None`입니다. EN: a dict with those keys; `None` without a ROI or before the worker answers.
-- 실패 시 / On failure: KO: `app/controller/viewer.py`의 `set_roi` docstring을 보세요. 오류 메시지는 STYLE.md의 "Errors" 규칙(필드, 값, 기대 값)을 따릅니다. EN: see the `set_roi` docstring; error messages follow the STYLE.md "Errors" rule.
+`try-roi-hook/try_roi_hook.py`:
+
+```python
+from tkinter import ttk
+
+
+class TryRoiHook:
+    name = "try-roi"
+
+    def build_tab(self, parent, app):
+        frame = ttk.Frame(parent)
+
+        def poll(tries=50):                     # re-check every 200 ms; the GUI keeps running
+            res = app.roi_timecourse()          # None until the worker has answered
+            if res is not None:
+                print(res["n_mask"], res["values"][:5])
+            elif tries > 0:
+                parent.after(200, poll, tries - 1)
+            else:
+                print("no answer (no ROI, or it was cleared)")
+
+        def set_rect():
+            app.set_roi("rect", (10, 20, 10, 20), axis=2)   # (u0, u1, v0, v1), inclusive pixels
+            poll()
+
+        def set_ellipse():
+            app.set_roi("ellipse", (15, 15, 5, 5), axis=2)  # (cu, cv, ru, rv)
+            poll()
+
+        ttk.Button(frame, text="Set rect ROI", command=set_rect).pack(anchor="w")
+        ttk.Button(frame, text="Set ellipse ROI", command=set_ellipse).pack(anchor="w")
+        ttk.Button(frame, text="Print timecourse",
+                   command=lambda: print(app.roi_timecourse())).pack(anchor="w")
+        ttk.Button(frame, text="Clear ROI", command=app.clear_roi).pack(anchor="w")
+        return frame
+```
+
+```bash
+pip install ./try-roi-hook
+brkraw viewer   # KO: 터미널에서 실행해야 print 출력이 보입니다 / EN: run from a terminal to see the prints
+```
+
+KO: 2) `<YOUR_DATA>`를 열고 Viewer 탭에서 시간 축이 있는 스캔을 고른 뒤, **Extensions** 탭의 목록에서 `try-roi`를 고릅니다. 3) **Set rect ROI**, **Print timecourse**, **Set ellipse ROI**, **Clear ROI**, **Print timecourse**를 차례로 누릅니다.
+EN: 2) Open `<YOUR_DATA>`, select a multi-frame scan in the Viewer tab, then pick `try-roi` from the list in the **Extensions** tab. 3) Press **Set rect ROI**, **Print timecourse**, **Set ellipse ROI**, **Clear ROI**, **Print timecourse** in turn.
+
+- 기대 결과 / Expected: KO: Set 버튼을 누르면 잠시 뒤 터미널에 ROI 복셀 수와 처음 다섯 프레임 값이 찍히고, Viewer 탭의 axial 뷰(axis 2)에 ROI가 그려지며 Timecourse 플롯이 ROI 평균을 보입니다. `roi_timecourse()`는 `values`, `n_mask`, `n_per_frame`, `shape`, `axis`, `index`를 가진 dict이고, ROI가 없거나 worker 응답 전이면 `None`입니다. **Clear ROI** 뒤의 **Print timecourse**는 `None`을 찍습니다. EN: shortly after a Set button the terminal prints the ROI voxel count and the first five frame values, the ROI is drawn on the axial view (axis 2) and the Timecourse plot shows the ROI mean; `roi_timecourse()` is a dict with those keys, `None` without a ROI or before the worker answers; **Print timecourse** after **Clear ROI** prints `None`.
+- 실패 시 / On failure: KO: `try-roi`가 목록에 없으면 같은 가상환경에 설치됐는지(`pip show try-roi-hook`)와 터미널의 "Failed to load viewer hook" 경고를 확인하세요. 버튼을 눌러 터미널에 `ValueError`가 나오면 이미지가 로드되지 않았거나 geometry/axis/index가 잘못된 것입니다(`app/controller/viewer.py`의 `set_roi` docstring). 오류 메시지는 STYLE.md의 "Errors" 규칙(필드, 값, 기대 값)을 따릅니다. 계속 "no answer"면 worker 로그(상태 표시줄 아이콘)를 보세요. EN: if `try-roi` is not listed, check it is installed in the same venv (`pip show try-roi-hook`) and look for a "Failed to load viewer hook" warning in the terminal; a `ValueError` in the terminal means no image is loaded or a bad geometry/axis/index (see the `set_roi` docstring), with messages following the STYLE.md "Errors" rule; a repeated "no answer" means checking the worker log (status bar icon).
 
 ## 7. 스타일 가이드 STYLE.md / STYLE.md style guide
 

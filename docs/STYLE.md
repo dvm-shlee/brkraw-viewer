@@ -10,7 +10,8 @@ future work follows them consistently.
   a short snake_case description (for example `test_mkj_wi0008_example.py`).
 - Tests written by the old team, named `tests/test_wiNNNN_*`, keep their names.
 - This company's earlier tests `tests/test_wi0002_roi_tool.py` and
-  `tests/test_wi0005_roi_timecourse.py` are renamed to the new pattern when
-  they are next changed.
+  `tests/test_wi0005_roi_timecourse.py` were renamed to
+  `tests/test_mkj_wi0002_roi_tool.py` and
+  `tests/test_mkj_wi0005_roi_timecourse.py` on 2026-10-16.
 
 This rule was accepted by the Director on 2026-10-15.

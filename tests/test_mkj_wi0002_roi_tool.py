@@ -23,7 +23,7 @@ from brkraw_viewer.core.roi import (
     roi_mask,
     uv_to_rc,
 )
-from test_wi0005_roi_timecourse import env  # noqa: F401  (fixture: controller on a 4D phantom)
+from test_mkj_wi0005_roi_timecourse import env  # noqa: F401  (fixture: controller on a 4D phantom)
 
 
 @pytest.mark.parametrize("plane,axis", [("xy", 2), ("xz", 1), ("zy", 0)])

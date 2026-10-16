@@ -8,16 +8,17 @@ EN: This page walks through installing mokoji-org/brkraw-viewer `main` and tryin
 
 ## 1. 설치 / Install
 
-KO: 새 가상환경에 `main`을 설치합니다.
-EN: Install `main` into a fresh virtual environment.
+KO: 새 가상환경에 `main`을 설치합니다. `main`은 아직 PyPI에 없는 `brkraw>=0.6.1rc2`를 요구하므로 GitHub 태그를 먼저 설치합니다.
+EN: Install `main` into a fresh virtual environment. `main` pins `brkraw>=0.6.1rc2`, which is not on PyPI yet, so install that tag from GitHub first (otherwise pip fails with "No matching distribution found for brkraw").
 
 ```bash
 python -m venv try-viewer && source try-viewer/bin/activate
+pip install "git+https://github.com/BrkRaw/brkraw@0.6.1rc2"
 pip install "git+https://github.com/mokoji-org/brkraw-viewer@main"
 ```
 
 - 기대 결과 / Expected: KO: `pip show brkraw-viewer`가 패키지를 보여주고 `brkraw --help`에 `viewer`가 나옵니다. EN: `pip show brkraw-viewer` prints the package; `brkraw --help` lists `viewer`.
-- 실패 시 / On failure: KO: pip 오류(네트워크, git 접근, `pyproject.toml`보다 낮은 Python 버전)를 확인하세요. `brkraw`가 없으면 가상환경이 활성화되지 않은 것입니다. Tk가 없는 Python은 창을 열 수 없습니다(`python -c "import tkinter"`). EN: check the pip error (network, git access, Python older than `pyproject.toml` requires); a missing `brkraw` means the venv is not activated; a Python without Tk cannot open the window.
+- 실패 시 / On failure: KO: pip 오류(`brkraw` 0.6.1rc2를 못 찾으면 위 첫 `pip install` 줄을 먼저 실행; 네트워크, git 접근, `pyproject.toml`보다 낮은 Python 버전)를 확인하세요. `brkraw`가 없으면 가상환경이 활성화되지 않은 것입니다. Tk가 없는 Python은 창을 열 수 없습니다(`python -c "import tkinter"`). EN: check the pip error ("No matching distribution found for brkraw" means run the first `pip install` line above; network, git access, Python older than `pyproject.toml` requires); a missing `brkraw` means the venv is not activated; a Python without Tk cannot open the window.
 
 ## 2. 실행 / Launch
 

@@ -29,7 +29,7 @@ brkraw viewer
 - 기대 결과 / Expected: KO: Viewer 탭에 axial, coronal, sagittal 뷰가 나타납니다. EN: the axial, coronal and sagittal views appear in the Viewer tab.
 - 실패 시 / On failure: KO: 메인 상태 표시줄 오른쪽 아이콘으로 worker 로그를 열고, `docs/user/viewer.md`("Loading data")를 보세요. EN: open the worker log from the icon at the right of the main status bar; see `docs/user/viewer.md` ("Loading data").
 
-## 3. ROI 도구 Off / Square / Circle / ROI tool
+## 3. ROI 도구 (Off / Square / Circle) / ROI tool (Off / Square / Circle)
 
 KO: 뷰 위쪽의 **ROI** 버튼(Off, Square, Circle)으로 도구를 고릅니다.
 EN: Pick the tool with the **ROI** buttons above the views.
@@ -39,7 +39,7 @@ EN: Pick the tool with the **ROI** buttons above the views.
 3. KO: **Circle**도 같고, 새 선택이 이전 선택을 대체합니다. EN: **Circle**: same; the new choice replaces the previous one.
 
 - 기대 결과 / Expected: KO: Square/Circle에서는 십자선이 고정되고 Off에서는 움직입니다. EN: with Square or Circle the crosshair stays put; with Off it moves.
-- 실패 시 / On failure: `src/brkraw_viewer/core/roi.py` (`ROI_TOOLS = ("off", "square", "circle")`), `src/brkraw_viewer/ui/tabs/viewer/`, `tests/test_mkj_wi0002_roi_tool.py`.
+- 실패 시 / On failure: KO: 도구 목록은 `src/brkraw_viewer/core/roi.py`(`ROI_TOOLS = ("off", "square", "circle")`), 버튼은 `src/brkraw_viewer/ui/tabs/viewer/`, 테스트는 `tests/test_mkj_wi0002_roi_tool.py`를 보세요. EN: tool list in `src/brkraw_viewer/core/roi.py` (`ROI_TOOLS`), buttons in `src/brkraw_viewer/ui/tabs/viewer/`, test in `tests/test_mkj_wi0002_roi_tool.py`.
 
 ## 4. 드래그로 ROI 그리기 / Drag to draw an ROI
 
@@ -49,7 +49,7 @@ EN: Pick the tool with the **ROI** buttons above the views.
 4. KO: 드래그 없이 클릭합니다. EN: click without dragging.
 
 - 기대 결과 / Expected: KO: 드래그 중 도형이 그려지고 놓은 뒤에도 슬라이스에 남습니다. ROI는 한 번에 하나, Esc/Off로 지워지고, 단순 클릭은 아무것도 설정하지 않습니다. 그 축의 다른 슬라이스로 스크롤하거나 스캔/재구성을 바꾸면 지워지며, 프레임 변경은 지우지 않습니다. EN: the shape is drawn while dragging and stays after release; one ROI at a time; Esc/Off removes it; a plain click sets nothing; scrolling to another slice on that axis or changing scan/reconstruction clears it, changing the frame does not.
-- 실패 시 / On failure: `src/brkraw_viewer/ui/tabs/viewer/right_panel.py` (drag, Esc binds), `core/roi.py` (`drag_geometry`, `RoiDrag`).
+- 실패 시 / On failure: KO: 드래그와 Esc 키 바인딩은 `src/brkraw_viewer/ui/tabs/viewer/right_panel.py`, 도형 계산은 `src/brkraw_viewer/core/roi.py`(`drag_geometry`, `RoiDrag`)를 보세요. EN: drag and Esc key bindings in `src/brkraw_viewer/ui/tabs/viewer/right_panel.py`; shape geometry in `src/brkraw_viewer/core/roi.py` (`drag_geometry`, `RoiDrag`).
 
 ## 5. 시계열 플롯 / Timecourse plot
 
@@ -83,7 +83,7 @@ ctl.clear_roi()
 - 기대 결과 / Expected: KO: `roi_timecourse()`는 `values`, `n_mask`, `n_per_frame`, `shape`, `axis`, `index`를 가진 dict를 돌려주고, ROI가 없거나 worker 응답 전이면 `None`입니다. EN: a dict with those keys; `None` without a ROI or before the worker answers.
 - 실패 시 / On failure: KO: `app/controller/viewer.py`의 `set_roi` docstring을 보세요. 오류 메시지는 STYLE.md의 "Errors" 규칙(필드, 값, 기대 값)을 따릅니다. EN: see the `set_roi` docstring; error messages follow the STYLE.md "Errors" rule.
 
-## 7. STYLE.md
+## 7. 스타일 가이드 STYLE.md / STYLE.md style guide
 
 KO: pip 설치에는 `docs/STYLE.md`가 포함되지 않습니다. 저장소에서 확인하세요: https://github.com/mokoji-org/brkraw-viewer/blob/main/docs/STYLE.md (또는 저장소를 clone한 뒤 `docs/STYLE.md`를 엽니다).
 EN: The pip install does not ship `docs/STYLE.md`; read it in the repository at the URL above (or clone the repository and open `docs/STYLE.md`).

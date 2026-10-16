@@ -1,18 +1,14 @@
-# Try the new features / 새 기능 체험하기
+# 새 기능 체험하기 / Try the new features
 
-KO: 이 문서는 mokoji-org/brkraw-viewer `main` 브랜치를 설치해서 새 기능(ROI 도구, 시계열 플롯,
-Python API, STYLE.md)을 직접 확인하는 순서입니다. 각 항목은 "절차 / 기대 결과 / 실패 시 확인할 곳" 순서입니다.
+KO: 이 문서는 mokoji-org/brkraw-viewer `main` 브랜치를 설치해 새 기능(ROI 도구, 시계열 플롯, Python API, STYLE.md)을 직접 확인하는 순서입니다. 각 항목은 "절차 / 기대 결과 / 실패 시 확인할 곳" 순서입니다.
 
-EN: This page walks through installing mokoji-org/brkraw-viewer `main` and trying each new
-feature (ROI tool, timecourse plot, Python API, STYLE.md). Each item lists steps, expected
-result and where to look on failure.
+EN: This page walks through installing mokoji-org/brkraw-viewer `main` and trying each new feature (ROI tool, timecourse plot, Python API, STYLE.md). Each item lists steps, expected result and where to look on failure.
 
-Data path / 데이터 경로: `<YOUR_DATA>` (replace with a Bruker study folder, zip or PvDatasets
-package that has a multi-frame scan, e.g. fMRI / 시간 축이 있는 스캔).
+데이터 경로 / Data path: `<YOUR_DATA>` (KO: 시간 축이 있는 스캔, 예: fMRI, 이 들어 있는 Bruker 스터디 폴더, zip 또는 PvDatasets 패키지로 바꾸세요. EN: replace with a Bruker study folder, zip or PvDatasets package that has a multi-frame scan.)
 
-## 1. Install / 설치
+## 1. 설치 / Install
 
-KO: 새 가상환경에서 `main`을 설치합니다.
+KO: 새 가상환경에 `main`을 설치합니다.
 EN: Install `main` into a fresh virtual environment.
 
 ```bash
@@ -20,86 +16,77 @@ python -m venv try-viewer && source try-viewer/bin/activate
 pip install "git+https://github.com/mokoji-org/brkraw-viewer@main"
 ```
 
-- Expected / 기대 결과: `pip show brkraw-viewer` prints the package; `brkraw --help` lists `viewer`.
-- On failure / 실패 시: check the pip error (network, git access, a Python version below the
-  one in `pyproject.toml`); `brkraw` missing means the venv is not activated. A Python without
-  Tk cannot open the window (`python -c "import tkinter"`).
+- 기대 결과 / Expected: KO: `pip show brkraw-viewer`가 패키지를 보여주고 `brkraw --help`에 `viewer`가 나옵니다. EN: `pip show brkraw-viewer` prints the package; `brkraw --help` lists `viewer`.
+- 실패 시 / On failure: KO: pip 오류(네트워크, git 접근, `pyproject.toml`보다 낮은 Python 버전)를 확인하세요. `brkraw`가 없으면 가상환경이 활성화되지 않은 것입니다. Tk가 없는 Python은 창을 열 수 없습니다(`python -c "import tkinter"`). EN: check the pip error (network, git access, Python older than `pyproject.toml` requires); a missing `brkraw` means the venv is not activated; a Python without Tk cannot open the window.
 
-## 2. Launch / 실행
+## 2. 실행 / Launch
 
 ```bash
 brkraw viewer
 ```
 
-- Steps / 절차: use the **Load** menu to open `<YOUR_DATA>`; the first scan is selected
-  automatically (첫 스캔이 자동 선택됩니다).
-- Expected / 기대 결과: the views (axial, coronal, sagittal slices) appear in the Viewer tab.
-- On failure / 실패 시: the icon at the right of the main status bar opens the worker log;
-  see also `docs/user/viewer.md` ("Loading data").
+- 절차 / Steps: KO: **Load** 메뉴에서 `<YOUR_DATA>`를 엽니다. 첫 스캔이 자동 선택됩니다. EN: open `<YOUR_DATA>` from the **Load** menu; the first scan is selected automatically.
+- 기대 결과 / Expected: KO: Viewer 탭에 axial, coronal, sagittal 뷰가 나타납니다. EN: the axial, coronal and sagittal views appear in the Viewer tab.
+- 실패 시 / On failure: KO: 메인 상태 표시줄 오른쪽 아이콘으로 worker 로그를 열고, `docs/user/viewer.md`("Loading data")를 보세요. EN: open the worker log from the icon at the right of the main status bar; see `docs/user/viewer.md` ("Loading data").
 
-## 3. ROI tool: Off / Square / Circle
+## 3. ROI 도구 Off / Square / Circle / ROI tool
 
 KO: 뷰 위쪽의 **ROI** 버튼(Off, Square, Circle)으로 도구를 고릅니다.
 EN: Pick the tool with the **ROI** buttons above the views.
 
-1. Click **Off** (default): clicking a view moves the crosshair as before.
-2. Click **Square**: clicking a view no longer moves the crosshair.
-3. Click **Circle**: same; the new choice replaces the previous one.
+1. KO: **Off**(기본)를 누르고 뷰를 클릭하면 십자선이 움직입니다. EN: **Off** (default): clicking a view moves the crosshair.
+2. KO: **Square**를 누르고 뷰를 클릭하면 십자선이 움직이지 않습니다. EN: **Square**: clicking a view no longer moves the crosshair.
+3. KO: **Circle**도 같고, 새 선택이 이전 선택을 대체합니다. EN: **Circle**: same; the new choice replaces the previous one.
 
-- Expected / 기대 결과: with Square or Circle on, the crosshair stays put; with Off it moves.
-- On failure / 실패 시: `src/brkraw_viewer/core/roi.py` (`ROI_TOOLS = ("off", "square", "circle")`),
-  the Viewer tab code under `src/brkraw_viewer/ui/tabs/viewer/`; test
-  `tests/test_mkj_wi0002_roi_tool.py`.
+- 기대 결과 / Expected: KO: Square/Circle에서는 십자선이 고정되고 Off에서는 움직입니다. EN: with Square or Circle the crosshair stays put; with Off it moves.
+- 실패 시 / On failure: `src/brkraw_viewer/core/roi.py` (`ROI_TOOLS = ("off", "square", "circle")`), `src/brkraw_viewer/ui/tabs/viewer/`, `tests/test_mkj_wi0002_roi_tool.py`.
 
-## 4. Drag to draw an ROI / 드래그로 ROI 그리기
+## 4. 드래그로 ROI 그리기 / Drag to draw an ROI
 
-1. Choose **Square**, press in a view, drag, then release.
-2. Choose **Circle** and repeat. The drag is the circle's diameter; a square spans the two
-   corners of the drag.
-3. Press **Esc** (pointer over a view) or choose **Off**.
-4. Click without dragging.
+1. KO: **Square**를 고르고 뷰에서 누른 채 드래그한 뒤 놓습니다. EN: choose **Square**, press in a view, drag, release.
+2. KO: **Circle**로 반복합니다. 드래그가 원의 지름이고, 사각형은 드래그의 두 모서리를 잇습니다. EN: repeat with **Circle**; the drag is the circle's diameter, a square spans the two corners.
+3. KO: 뷰 위에서 **Esc**를 누르거나 **Off**를 고릅니다. EN: press **Esc** (pointer over a view) or choose **Off**.
+4. KO: 드래그 없이 클릭합니다. EN: click without dragging.
 
-- Expected / 기대 결과: the shape is drawn while you drag and stays on the slice after release;
-  one ROI at a time. Esc/Off removes it. A plain click sets nothing. Scrolling to another slice
-  on that axis, or changing scan/reconstruction, clears it; changing the frame does not.
-- On failure / 실패 시: `src/brkraw_viewer/ui/tabs/viewer/right_panel.py` (drag and Esc binds),
-  `core/roi.py` (`drag_geometry`, `RoiDrag`).
+- 기대 결과 / Expected: KO: 드래그 중 도형이 그려지고 놓은 뒤에도 슬라이스에 남습니다. ROI는 한 번에 하나, Esc/Off로 지워지고, 단순 클릭은 아무것도 설정하지 않습니다. 그 축의 다른 슬라이스로 스크롤하거나 스캔/재구성을 바꾸면 지워지며, 프레임 변경은 지우지 않습니다. EN: the shape is drawn while dragging and stays after release; one ROI at a time; Esc/Off removes it; a plain click sets nothing; scrolling to another slice on that axis or changing scan/reconstruction clears it, changing the frame does not.
+- 실패 시 / On failure: `src/brkraw_viewer/ui/tabs/viewer/right_panel.py` (drag, Esc binds), `core/roi.py` (`drag_geometry`, `RoiDrag`).
 
-## 5. Timecourse plot / 시계열 플롯
+## 5. 시계열 플롯 / Timecourse plot
 
-1. With a ROI set, click the **Value** button to open the Timecourse window.
-2. Remove the ROI (Esc) and look at the plot again.
+1. KO: ROI가 있는 상태에서 **Value** 버튼으로 Timecourse 창을 엽니다. EN: with a ROI set, click **Value** to open the Timecourse window.
+2. KO: ROI를 지우고(Esc) 플롯을 다시 봅니다. EN: remove the ROI (Esc) and look at the plot again.
 
-- Expected / 기대 결과: the window shows the mean of the finite voxels in the ROI per frame; the
-  title gives the shape and voxel count. After removal it returns to the single-voxel timecourse.
-- On failure / 실패 시: worker log (status bar icon); `app/workers/convert_worker.py`
-  (`_roi_timecourse`); test `tests/test_mkj_wi0005_roi_timecourse.py`. A single-frame scan has
-  no meaningful timecourse.
+- 기대 결과 / Expected: KO: 프레임별 ROI 내 유한(finite) 복셀의 평균이 표시되고 제목에 shape와 복셀 수가 나옵니다. ROI를 지우면 단일 복셀 시계열로 돌아갑니다. EN: the mean of the finite voxels in the ROI per frame; the title gives shape and voxel count; after removal it returns to the single-voxel timecourse.
+- 실패 시 / On failure: KO: worker 로그(상태 표시줄 아이콘), `app/workers/convert_worker.py`(`_roi_timecourse`), `tests/test_mkj_wi0005_roi_timecourse.py`. 단일 프레임 스캔은 시계열이 의미 없습니다. EN: worker log; the files above; a single-frame scan has no meaningful timecourse.
 
-## 6. Python API (provisional / 잠정 API)
+## 6. Python API (잠정 / provisional)
 
-KO: 컨트롤러 메서드 `set_roi`, `clear_roi`, `roi_timecourse` (`app/controller/viewer.py`).
-`<YOUR_DATA>`를 불러온 `ViewerController` 인스턴스 `ctl`이 있는 상태에서 실행합니다.
-EN: Run with a `ViewerController` instance `ctl` that has `<YOUR_DATA>` loaded.
+KO: 컨트롤러 메서드 `set_roi`, `clear_roi`, `roi_timecourse` (`app/controller/viewer.py`). `<YOUR_DATA>`를 불러온 `ViewerController` 인스턴스 `ctl`이 있을 때 실행합니다. `roi_timecourse()`는 worker가 답하기 전에는 `None`을 돌려주므로 dict가 나올 때까지 다시 호출합니다.
+EN: Run with a `ViewerController` instance `ctl` that has `<YOUR_DATA>` loaded. `roi_timecourse()` returns `None` until the worker has answered, so call it again until it returns a dict.
 
 ```python
+import time
+
 ctl.set_roi("rect", (10, 20, 10, 20), axis=2)   # (u0, u1, v0, v1), inclusive pixels
-res = ctl.roi_timecourse()                      # None while the worker is still computing
-print(res["n_mask"], res["values"][:5])
+res = ctl.roi_timecourse()
+for _ in range(50):                             # None while the worker is computing
+    if res is not None:
+        break
+    time.sleep(0.2)   # with the GUI running, its event loop also needs to run
+    res = ctl.roi_timecourse()
+if res is not None:
+    print(res["n_mask"], res["values"][:5])
 ctl.set_roi("ellipse", (15, 15, 5, 5), axis=2)  # (cu, cv, ru, rv)
 ctl.clear_roi()
 ```
 
-- Expected / 기대 결과: `roi_timecourse()` returns a dict with `values`, `n_mask`,
-  `n_per_frame`, `shape`, `axis`, `index`; it returns `None` without a ROI or before the
-  worker answers (call again after a moment).
-- On failure / 실패 시: see the docstring of `set_roi` in `app/controller/viewer.py`; error
-  messages follow the STYLE.md "Errors" rule (field, value, expected values).
+- 기대 결과 / Expected: KO: `roi_timecourse()`는 `values`, `n_mask`, `n_per_frame`, `shape`, `axis`, `index`를 가진 dict를 돌려주고, ROI가 없거나 worker 응답 전이면 `None`입니다. EN: a dict with those keys; `None` without a ROI or before the worker answers.
+- 실패 시 / On failure: KO: `app/controller/viewer.py`의 `set_roi` docstring을 보세요. 오류 메시지는 STYLE.md의 "Errors" 규칙(필드, 값, 기대 값)을 따릅니다. EN: see the `set_roi` docstring; error messages follow the STYLE.md "Errors" rule.
 
 ## 7. STYLE.md
 
-KO: `docs/STYLE.md`를 열어 규칙을 확인합니다. EN: Open `docs/STYLE.md`.
+KO: pip 설치에는 `docs/STYLE.md`가 포함되지 않습니다. 저장소에서 확인하세요: https://github.com/mokoji-org/brkraw-viewer/blob/main/docs/STYLE.md (또는 저장소를 clone한 뒤 `docs/STYLE.md`를 엽니다).
+EN: The pip install does not ship `docs/STYLE.md`; read it in the repository at the URL above (or clone the repository and open `docs/STYLE.md`).
 
-- Expected / 기대 결과: sections Tests (`tests/test_mkj_wiNNNN_<topic>.py`), Layout (Tk-free
-  logic in `core/`, thin Tk binding in `ui/`), Docstrings (cite WI and contract ids), Errors.
-- On failure / 실패 시: if the file is missing, you are not on `main`; reinstall from `main`.
+- 기대 결과 / Expected: KO: Tests(`tests/test_mkj_wiNNNN_<topic>.py`), Layout(Tk 무관 로직은 `core/`, 얇은 Tk 바인딩은 `ui/`), Docstrings(WI와 계약 id 인용), Errors 절이 있습니다. EN: sections Tests, Layout, Docstrings, Errors as listed.
+- 실패 시 / On failure: KO: 파일이 `main`에 없다면 알려 주세요. EN: if the file is missing on `main`, report it.

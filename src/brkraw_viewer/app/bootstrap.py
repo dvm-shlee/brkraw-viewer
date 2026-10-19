@@ -107,7 +107,12 @@ def bring_to_front_once(root: "tk.Tk") -> None:
 
 
 def _icon_paths() -> tuple[Path, Path]:
-    assets = Path(__file__).resolve().parents[1] / "assets"
+    here = Path(__file__).resolve()
+    # Package assets first (works from an installed wheel); legacy layout second.
+    for assets in (here.parents[1] / "assets", here.parents[2] / "assets"):
+        if (assets / "icon.png").exists() or (assets / "icon.ico").exists():
+            return assets / "icon.png", assets / "icon.ico"
+    assets = here.parents[1] / "assets"
     return assets / "icon.png", assets / "icon.ico"
 
 

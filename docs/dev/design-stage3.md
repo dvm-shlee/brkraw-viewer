@@ -45,8 +45,9 @@ Observed in `core/layers.py`:
   `ui/roi_tool.py` in the tree, although the requirements name one. STYLE.md states the core/ui split
   (`docs/STYLE.md`, "Layout").
 
-Missing (observed absence; an absence has no file:line, so the evidence is a search of `src/` for voxel writes and
-undo): an `rgb` kind; a channel-axis rule; any code that mutates layer voxel data; an undo mechanism for voxels (the
+Missing (an absence has no file:line; these claims are observed by a search of `src/` for voxel writes and undo
+stacks, and each is to be read as proposed work in the Design section, not as a cited code fact; the only cited
+anchors are the lines given): an `rgb` kind; a channel-axis rule; any code that mutates layer voxel data; an undo mechanism for voxels (the
 only `undo` hits in `src/` are Tk text-widget undo, `ui/tabs/addons/window.py:1015,1139`; the existing label painter
 widget states it manages no volumes, undo stacks or saving, `ui/components/label_painter.py:41`); any writer for layer data (NIfTI is written only by the convert worker through `img.to_filename`,
 `app/workers/convert_worker.py:264-265`; `nibabel` is imported in `utils/orientation.py:5`).

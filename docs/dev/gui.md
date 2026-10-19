@@ -44,10 +44,26 @@ controller into smaller components.
 no real dataset). The GUI smoke test runs only with `BRKRAW_VIEWER_SMOKE=1` and a
 display, and the installed-ecosystem test only with `BRKRAW_ECOSYSTEM_CONTRACT=1`.
 
+### Running the GUI tests
+
+The Tk tests are skipped unless `BRKRAW_VIEWER_SMOKE=1` is set and a display exists
+(`DISPLAY` or `WAYLAND_DISPLAY`).
+
+- With a display: `BRKRAW_VIEWER_SMOKE=1 uv run --locked --extra dev pytest tests/test_mkj_wi0020_checklist_gui.py`.
+- Headless: wrap the same command in `xvfb-run -a ...`, or start `Xvfb -displayfd <fd>` yourself
+  and export the printed display number as `DISPLAY`.
+- `tests/test_mkj_wi0020_checklist_gui.py` drives the real Tk windows (checklist sections,
+  including the ROI tool and zoom).
+- With the Tk 9 wheel, send `<MouseWheel>` events (not Button-4/5) when simulating scrolling.
+- Always destroy the Tk root at the end of a test (fixture with try/finally), or later tests
+  hang or fail on a leaked root.
+- Run these through the scheduler, not in an interactive session.
+
 ### Manual look: ROI tool
 
-The Tk parts of the ROI tool (WI-0002) have no automated test; the drag logic, plane mapping and
-controller wiring do (`tests/test_mkj_wi0002_roi_tool.py`). Check by hand with a 4D scan:
+The Tk parts of the ROI tool (WI-0002) are covered by the GUI checklist test above
+(`tests/test_mkj_wi0020_checklist_gui.py`); the drag logic, plane mapping and controller wiring
+also have synthetic tests (`tests/test_mkj_wi0002_roi_tool.py`). Check by hand with a 4D scan:
 
 - Off / Square / Circle buttons above the views; Off by default, and clicking a view still
   moves the crosshair.

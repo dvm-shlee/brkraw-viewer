@@ -69,7 +69,7 @@ class ViewerRightPanel(ttk.Frame):
         # ROI tool: off / square / circle. Drag on a view draws the shape, release sets the ROI.
         self._roi_drag = RoiDrag()
         self._roi_previewed = False
-        self._roi_tool_var = tk.StringVar(value="off")
+        self._roi_tool_var = tk.StringVar(master=self, value="off")  # this window's root (WI-0022)
         roi_box = ttk.Frame(axis_bar)
         roi_box.grid(row=0, column=3, sticky="n", padx=(6, 4), pady=4)
         ttk.Label(roi_box, text="ROI").pack(side=tk.LEFT, padx=(0, 4))

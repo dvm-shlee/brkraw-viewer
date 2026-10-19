@@ -153,7 +153,7 @@ class PlotCanvas(ttk.Frame):
             from ..assets import load_icon
             from ..components.icon_button import IconButton
 
-            self._capture_icon = load_icon("viewport-capture.png", size=(12, 12), invert=True)
+            self._capture_icon = load_icon("viewport-capture.png", size=(12, 12), invert=True, master=self)
             if self._capture_icon is not None:
                 self._capture_btn = IconButton(
                     self._canvas,

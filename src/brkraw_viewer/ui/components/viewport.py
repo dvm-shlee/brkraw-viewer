@@ -97,7 +97,7 @@ class ColorbarWidget(ttk.Frame):
         grad[:, :, :] = self._lut[ramp][:, None, :]
 
         pil = Image.fromarray(grad, mode="RGB")
-        self._tk_img = ImageTk.PhotoImage(pil)
+        self._tk_img = ImageTk.PhotoImage(pil, master=self._canvas)
         self._img_id = self._canvas.create_image(x0, y0, anchor="nw", image=self._tk_img)
 
         # border
@@ -221,7 +221,7 @@ class ViewportCanvas(ttk.Frame):
         self._canvas.bind("<Motion>", self._on_motion)
 
         # capture button (bottom-right)
-        self._capture_icon = load_icon("viewport-capture.png", size=(12, 12), invert=True)
+        self._capture_icon = load_icon("viewport-capture.png", size=(12, 12), invert=True, master=self)
         if self._capture_icon is not None:
             self._capture_btn = IconButton(
                 self._canvas,
@@ -469,7 +469,7 @@ class ViewportCanvas(ttk.Frame):
         resample = getattr(resampling, "NEAREST")
         pil = pil.resize((int(dw), int(dh)), resample)
 
-        self._brush_preview_tk_img = ImageTk.PhotoImage(pil)
+        self._brush_preview_tk_img = ImageTk.PhotoImage(pil, master=self._canvas)
 
         # id might be stale if canvas was cleared
         if self._brush_preview_img_id is not None:
@@ -883,7 +883,7 @@ class ViewportCanvas(ttk.Frame):
         resample = getattr(resampling, "NEAREST")
         pil_img = pil_img.resize((tw, th), resample)
 
-        self._tk_img = ImageTk.PhotoImage(pil_img)
+        self._tk_img = ImageTk.PhotoImage(pil_img, master=self._canvas)
         ox = base_ox
         oy = base_oy
         ox = int(round(float(ox) + self._pan_offset[0]))
@@ -930,7 +930,7 @@ class ViewportCanvas(ttk.Frame):
         resample = getattr(resampling, "NEAREST")
         pil = pil.resize((int(tw), int(th)), resample)
 
-        self._overlay_tk_img = ImageTk.PhotoImage(pil)
+        self._overlay_tk_img = ImageTk.PhotoImage(pil, master=self._canvas)
 
         # If the canvas was cleared (delete("all")), the stored id may refer to a non-existent item.
         if self._overlay_img_id is not None:

@@ -125,10 +125,10 @@ def test_bootstrap_icon_has_master(recorder, monkeypatch, tmp_path) -> None:
     from brkraw_viewer.app import bootstrap
 
     src_png = Path(bootstrap.__file__).resolve().parents[1] / "assets" / "icon.png"
-    # _set_app_icon looks for <file>.parents[2]/assets/icon.png; give it one
-    (tmp_path / "assets").mkdir()
-    shutil.copy(src_png, tmp_path / "assets" / "icon.png")
-    (tmp_path / "x" / "y").mkdir(parents=True)
+    # _set_app_icon looks for <file>.parents[1]/assets/icon.png; give it one
+    (tmp_path / "x" / "assets").mkdir(parents=True)
+    shutil.copy(src_png, tmp_path / "x" / "assets" / "icon.png")
+    (tmp_path / "x" / "y").mkdir()
     monkeypatch.setattr(bootstrap, "__file__", str(tmp_path / "x" / "y" / "bootstrap.py"))
 
     root = _tk()

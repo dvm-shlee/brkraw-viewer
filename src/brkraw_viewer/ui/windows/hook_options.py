@@ -363,7 +363,7 @@ class HookOptionsDialog:
         row = 1
         for key, default in preset.items():
             value = self._hook_args.get(key, default)
-            var = self._vars.get(key) or tk.StringVar(master=self._window, value="" if value is None else str(value))
+            var = self._vars.get(key) or tk.StringVar(value="" if value is None else str(value))
             self._vars[key] = var
             self._defaults[key] = default
 

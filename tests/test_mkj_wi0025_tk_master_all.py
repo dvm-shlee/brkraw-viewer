@@ -117,9 +117,19 @@ def test_main_window_variables_and_images_have_master(isolated, recorder) -> Non
             _destroy_root(root)
 
 
-def test_bootstrap_icon_has_master(recorder) -> None:
+def test_bootstrap_icon_has_master(recorder, monkeypatch, tmp_path) -> None:
     _gui_ready()
+    import shutil
+    from pathlib import Path
+
     from brkraw_viewer.app import bootstrap
+
+    src_png = Path(bootstrap.__file__).resolve().parents[1] / "assets" / "icon.png"
+    # _set_app_icon looks for <file>.parents[2]/assets/icon.png; give it one
+    (tmp_path / "assets").mkdir()
+    shutil.copy(src_png, tmp_path / "assets" / "icon.png")
+    (tmp_path / "x" / "y").mkdir(parents=True)
+    monkeypatch.setattr(bootstrap, "__file__", str(tmp_path / "x" / "y" / "bootstrap.py"))
 
     root = _tk()
     try:

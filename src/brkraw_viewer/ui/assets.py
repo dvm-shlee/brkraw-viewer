@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from functools import lru_cache
 from pathlib import Path
-from typing import cast, Tuple
+from typing import Any, cast, Tuple
 
 import tkinter as tk
 from PIL import Image, ImageTk, ImageOps
@@ -13,16 +12,28 @@ def load_icon(
     size: tuple[int, int] | None = None,
     *,
     invert: bool = False,
+    master: tk.Misc | None = None,
 ) -> tk.PhotoImage | None:
-    """Load an icon from the package assets directory, optionally resized."""
+    """Load an icon bound to the Tk root of master, optionally resized.
+
+    Icons are cached per root (on the root widget), so two roots never share a PhotoImage.
+    """
     try:
-        return _load_icon_cached(name, size, invert)
+        if master is None:
+            master = tk._get_default_root()  # type: ignore[attr-defined]
+        if master is None:
+            return None
+        root = master.nametowidget(".")
+        cache: dict[Any, tk.PhotoImage] = root.__dict__.setdefault("_brkraw_icon_cache", {})
+        key = (name, size, invert)
+        if key not in cache:
+            cache[key] = _build_icon(name, size, invert, root)
+        return cache[key]
     except Exception:
         return None
 
 
-@lru_cache(maxsize=64)
-def _load_icon_cached(name: str, size: Tuple[int, int] | None, invert: bool) -> tk.PhotoImage:
+def _build_icon(name: str, size: Tuple[int, int] | None, invert: bool, root: tk.Misc) -> tk.PhotoImage:
     assets_dir = Path(__file__).resolve().parents[1] / "assets"
     icon_path = assets_dir / name
     img = Image.open(icon_path)
@@ -41,4 +52,4 @@ def _load_icon_cached(name: str, size: Tuple[int, int] | None, invert: bool) -> 
         if lanczos is None:
             lanczos = getattr(Image, "LANCZOS", 1)
         img = img.resize(size, lanczos)
-    return cast(tk.PhotoImage, ImageTk.PhotoImage(img))
+    return cast(tk.PhotoImage, ImageTk.PhotoImage(img, master=root))

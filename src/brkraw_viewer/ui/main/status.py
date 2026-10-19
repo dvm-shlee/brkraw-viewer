@@ -19,7 +19,7 @@ class StatusBar(ttk.Frame):
     ) -> None:
         """Create the status label and wire the worker-log action if provided."""
         super().__init__(master)
-        self._worker_icon = load_icon("worker-logs.png", size=(16, 16))
+        self._worker_icon = load_icon("worker-logs.png", size=(16, 16), master=self)
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=0)
         label = ttk.Label(

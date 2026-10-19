@@ -20,7 +20,7 @@ class TopBar(ttk.Frame):
     ) -> None:
         super().__init__(master, padding=(10, 10, 10, 6))
 
-        registry_icon = load_icon("registry.png", size=(18, 18))
+        registry_icon = load_icon("registry.png", size=(18, 18), master=self)
         if registry_icon is not None:
             IconButton(self, image=registry_icon, command=on_open_registry).pack(side="right", padx=(6, 6))
         else:

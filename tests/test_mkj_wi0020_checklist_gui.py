@@ -171,6 +171,30 @@ class Gui:
         return self.ctrl.roi_timecourse() is not None
 
 
+def _destroy_root(root):
+    """Cancel pending callbacks one by one, then always destroy the root.
+
+    A root left alive stays tkinter's default root; ImageTk.PhotoImage (no master) would bind the next
+    test's icons to it and the next window fails with 'image "pyimageN" does not exist'.
+    """
+    try:
+        jobs = root.tk.splitlist(root.tk.call("after", "info"))
+    except tk.TclError:
+        jobs = ()
+    for job in jobs:
+        try:
+            root.after_cancel(job)  # pending resize/poll callbacks would outlive the root
+        except tk.TclError:
+            pass
+    try:
+        root.destroy()
+    except tk.TclError:
+        pass
+    finally:
+        if getattr(tk, "_default_root", None) is root:
+            tk._default_root = None
+
+
 @pytest.fixture
 def gui(monkeypatch, tmp_path):
     if not _has_display():
@@ -195,36 +219,33 @@ def gui(monkeypatch, tmp_path):
 
     _assets._load_icon_cached.cache_clear()  # cached PhotoImages are bound to the previous root
     root = tk.Tk()
-    root.geometry("1280x900+0+0")
-    ctrl = ViewerController()
-
-    def submit(req):  # the worker answers at once, in this process
-        out = _Queue()
-        if isinstance(req, LoadVolumeRequest):
-            convert_worker._process_load_volume(req, out)
-            ctrl._on_volume_result(out.items[0])
-        elif isinstance(req, TimecourseRequest):
-            convert_worker._process_timecourse(req, out)
-            ctrl._on_timecourse_result(out.items[0])
-
-    ctrl._worker = SimpleNamespace(submit=submit, log_queue=None, check_results=lambda: None)
-    ctrl.state.dataset.path = tmp_path / "study"
-    ctrl.state.dataset.selected_scan_id = 1
-    ctrl.state.dataset.selected_reco_id = 1
-    ctrl._resolve_cycle_frames = lambda: N
-    win = MainWindow(root, ctrl)
-    win.tabs.select_tab("Viewer")
-    root.update()
-    ctrl._request_viewer_volume()  # what selecting the first scan does
-    g = Gui(root, win, ctrl)
-    assert g.pump(lambda: all(v._render_state is not None for v in g.views.values()), 5.0)
-    yield g
     try:
-        for job in root.tk.splitlist(root.tk.call("after", "info")):
-            root.after_cancel(job)  # pending resize/poll callbacks would outlive the root
-        root.destroy()
-    except tk.TclError:
-        pass
+        root.geometry("1280x900+0+0")
+        ctrl = ViewerController()
+
+        def submit(req):  # the worker answers at once, in this process
+            out = _Queue()
+            if isinstance(req, LoadVolumeRequest):
+                convert_worker._process_load_volume(req, out)
+                ctrl._on_volume_result(out.items[0])
+            elif isinstance(req, TimecourseRequest):
+                convert_worker._process_timecourse(req, out)
+                ctrl._on_timecourse_result(out.items[0])
+
+        ctrl._worker = SimpleNamespace(submit=submit, log_queue=None, check_results=lambda: None)
+        ctrl.state.dataset.path = tmp_path / "study"
+        ctrl.state.dataset.selected_scan_id = 1
+        ctrl.state.dataset.selected_reco_id = 1
+        ctrl._resolve_cycle_frames = lambda: N
+        win = MainWindow(root, ctrl)
+        win.tabs.select_tab("Viewer")
+        root.update()
+        ctrl._request_viewer_volume()  # what selecting the first scan does
+        g = Gui(root, win, ctrl)
+        assert g.pump(lambda: all(v._render_state is not None for v in g.views.values()), 5.0)
+        yield g
+    finally:
+        _destroy_root(root)
     for store in stores:
         store.clear()
 

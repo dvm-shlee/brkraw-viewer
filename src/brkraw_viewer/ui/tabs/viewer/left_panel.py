@@ -11,10 +11,10 @@ class ViewerLeftPanel(ttk.Frame):
 
         ttk.Label(self, text="Axes").grid(row=0, column=0, sticky="w", pady=(0, 4))
 
-        self._x_var = tk.IntVar(value=0)
-        self._y_var = tk.IntVar(value=0)
-        self._z_var = tk.IntVar(value=0)
-        self._frame_var = tk.IntVar(value=0)
+        self._x_var = tk.IntVar(master=self, value=0)
+        self._y_var = tk.IntVar(master=self, value=0)
+        self._z_var = tk.IntVar(master=self, value=0)
+        self._frame_var = tk.IntVar(master=self, value=0)
 
         self._x_row, self._x_scale = self._axis_scale("X", self._x_var, lambda v: self._on_axis(callbacks, "x", v))
         self._x_row.grid(row=1, column=0, sticky="ew", pady=(0, 4))

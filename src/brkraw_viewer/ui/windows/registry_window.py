@@ -107,7 +107,7 @@ class RegistryWindow:
         status_bar = ttk.Frame(self._window, padding=(8, 4))
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         status_bar.columnconfigure(0, weight=1)
-        self._status_var = tk.StringVar(value="Ready")
+        self._status_var = tk.StringVar(master=self._window, value="Ready")
         ttk.Label(status_bar, textvariable=self._status_var, anchor="w").grid(row=0, column=0, sticky="w")
         ttk.Button(status_bar, text="Load", command=self._open_selected).grid(row=0, column=1, sticky="e")
 

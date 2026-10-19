@@ -25,10 +25,10 @@ class Sidebar(ttk.Frame):
         self._scan_ids: list[int] = []  # listbox index -> scan id
         self._reco_ids: list[int] = []  # listbox index -> reco id
 
-        self._scan_label_var = tk.StringVar(value="Scans (0)")  # scan count label
-        self._reco_label_var = tk.StringVar(value="Recos (0)")  # reco count label
-        self._scan_selected_var = tk.StringVar(value="Selected: -")  # scan selection text
-        self._reco_selected_var = tk.StringVar(value="Selected: -")  # reco selection text
+        self._scan_label_var = tk.StringVar(master=self, value="Scans (0)")  # scan count label
+        self._reco_label_var = tk.StringVar(master=self, value="Recos (0)")  # reco count label
+        self._scan_selected_var = tk.StringVar(master=self, value="Selected: -")  # scan selection text
+        self._reco_selected_var = tk.StringVar(master=self, value="Selected: -")  # reco selection text
 
         def _auto_scrollbar(sb: ttk.Scrollbar) -> Callable[[float, float], None]:
             def _handler(first: float, last: float) -> None:

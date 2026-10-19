@@ -38,7 +38,7 @@ class ViewerTopPanel(ttk.Frame):
         ttk.Label(self.orientation_frame, text="Space").grid(row=0, column=0, sticky="w", padx=(0, 8))
         space_radio_frame = ttk.Frame(self.orientation_frame)
         space_radio_frame.grid(row=0, column=1, columnspan=2, sticky="ew", pady=(0, 4))
-        self._space_var = tk.StringVar(value="scanner")
+        self._space_var = tk.StringVar(master=self, value="scanner")
         for label, value in (("raw", "raw"), ("scanner", "scanner"), ("subject_ras", "subject_ras")):
             ttk.Radiobutton(
                 space_radio_frame,
@@ -49,7 +49,7 @@ class ViewerTopPanel(ttk.Frame):
             ).pack(side=tk.LEFT, padx=(0, 10))
 
         ttk.Label(self.orientation_frame, text="Type").grid(row=1, column=0, sticky="w", padx=(0, 8))
-        self._subject_type_var = tk.StringVar(value="Biped")
+        self._subject_type_var = tk.StringVar(master=self, value="Biped")
         self._subject_type_combo = ttk.Combobox(
             self.orientation_frame,
             textvariable=self._subject_type_var,
@@ -68,8 +68,8 @@ class ViewerTopPanel(ttk.Frame):
         ).grid(row=1, column=2, sticky="ew", padx=(4, 0))
 
         ttk.Label(self.orientation_frame, text="Pose").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(6, 0))
-        self._pose_primary_var = tk.StringVar(value="Head")
-        self._pose_secondary_var = tk.StringVar(value="Supine")
+        self._pose_primary_var = tk.StringVar(master=self, value="Head")
+        self._pose_secondary_var = tk.StringVar(master=self, value="Supine")
         self._pose_primary_combo = ttk.Combobox(
             self.orientation_frame,
             textvariable=self._pose_primary_var,
@@ -92,9 +92,9 @@ class ViewerTopPanel(ttk.Frame):
         flip_row = ttk.Frame(self.orientation_frame)
         flip_row.grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
         ttk.Label(flip_row, text="Flip").pack(side=tk.LEFT, padx=(0, 14))
-        self._flip_x_var = tk.BooleanVar(value=False)
-        self._flip_y_var = tk.BooleanVar(value=False)
-        self._flip_z_var = tk.BooleanVar(value=False)
+        self._flip_x_var = tk.BooleanVar(master=self, value=False)
+        self._flip_y_var = tk.BooleanVar(master=self, value=False)
+        self._flip_z_var = tk.BooleanVar(master=self, value=False)
         ttk.Checkbutton(
             flip_row,
             text="X",
@@ -122,8 +122,8 @@ class ViewerTopPanel(ttk.Frame):
         hook_frame.grid(row=0, column=0, sticky="nsew")
         hook_frame.columnconfigure(1, weight=1)
 
-        self._hook_name_var = tk.StringVar(value="Disabled")
-        self._hook_enabled_var = tk.BooleanVar(value=False)
+        self._hook_name_var = tk.StringVar(master=self, value="Disabled")
+        self._hook_enabled_var = tk.BooleanVar(master=self, value=False)
         self._hook_args: dict | None = None
 
         self._hook_check = ttk.Checkbutton(
@@ -144,7 +144,7 @@ class ViewerTopPanel(ttk.Frame):
         )
         self._hook_options_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
-        self._value_var = tk.StringVar(value="-")
+        self._value_var = tk.StringVar(master=self, value="-")
         value_frame = ttk.LabelFrame(mid, text="Value", padding=(6, 4))
         value_frame.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
         value_frame.columnconfigure(0, weight=1)
@@ -165,8 +165,8 @@ class ViewerTopPanel(ttk.Frame):
         self.control_frame.grid(row=0, column=0, sticky="nsew")
         self.control_frame.columnconfigure(0, weight=1)
 
-        self._crosshair_var = tk.BooleanVar(value=True)
-        self._rgb_var = tk.BooleanVar(value=False)
+        self._crosshair_var = tk.BooleanVar(master=self, value=True)
+        self._rgb_var = tk.BooleanVar(master=self, value=False)
         ttk.Checkbutton(
             self.control_frame,
             text="Crosshair",
@@ -188,7 +188,7 @@ class ViewerTopPanel(ttk.Frame):
         zoom_top.pack(side=tk.TOP, fill=tk.X)
         ttk.Label(zoom_top, text="Zoom").pack(side=tk.LEFT, padx=(0, 4))
         
-        self._zoom_entry_var = tk.StringVar(value="1.00")
+        self._zoom_entry_var = tk.StringVar(master=self, value="1.00")
         self._zoom_entry = ttk.Entry(zoom_top, textvariable=self._zoom_entry_var, width=6)
         self._zoom_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._zoom_entry.bind("<Return>", self._on_zoom_entry)

@@ -19,8 +19,8 @@ class ParamsTab:
         except Exception:
             pass
 
-        self._param_scope_var = tk.StringVar(value="all")
-        self._param_query_var = tk.StringVar(value="")
+        self._param_scope_var = tk.StringVar(master=parent, value="all")
+        self._param_query_var = tk.StringVar(master=parent, value="")
         self._params_sort_key = "file"
         self._params_sort_desc = False
         self._params_tree: ttk.Treeview
@@ -41,14 +41,14 @@ class ParamsTab:
             summary_frame.columnconfigure(col * 2 + 1, weight=1)
 
         self._params_summary_vars = {
-            "Protocol": tk.StringVar(value=""),
-            "Method": tk.StringVar(value=""),
-            "TR (ms)": tk.StringVar(value=""),
-            "TE (ms)": tk.StringVar(value=""),
-            "FlipAngle (degree)": tk.StringVar(value=""),
-            "Dim": tk.StringVar(value=""),
-            "Shape": tk.StringVar(value=""),
-            "FOV (mm)": tk.StringVar(value=""),
+            "Protocol": tk.StringVar(master=parent, value=""),
+            "Method": tk.StringVar(master=parent, value=""),
+            "TR (ms)": tk.StringVar(master=parent, value=""),
+            "TE (ms)": tk.StringVar(master=parent, value=""),
+            "FlipAngle (degree)": tk.StringVar(master=parent, value=""),
+            "Dim": tk.StringVar(master=parent, value=""),
+            "Shape": tk.StringVar(master=parent, value=""),
+            "FOV (mm)": tk.StringVar(master=parent, value=""),
         }
         self._params_summary_entries = {}
         for idx, (label, var) in enumerate(self._params_summary_vars.items()):

@@ -37,7 +37,7 @@ class TaskProgressWindow(tk.Toplevel):
         bottom = ttk.Frame(frame)
         bottom.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
 
-        self.close_var = tk.BooleanVar(value=True)
+        self.close_var = tk.BooleanVar(master=self, value=True)
         ttk.Checkbutton(bottom, text="Close after task processed", variable=self.close_var).pack(side=tk.LEFT)
 
         self.close_button = ttk.Button(bottom, text="Close", command=self.destroy, state="disabled")

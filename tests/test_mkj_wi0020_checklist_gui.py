@@ -173,10 +173,10 @@ def gui(monkeypatch, tmp_path):
     monkeypatch.setattr(convert_worker, "_ensure_hook_state", lambda loader, sid, enable_hook: scan)
     monkeypatch.setattr(convert_worker, "_frame_axis_number", lambda s, r: 3)
     monkeypatch.setattr(convert_worker, "_resolve_affine_for_space", lambda s, **kw: np.eye(4))
-    try:
-        root = tk.Tk()
-    except tk.TclError as exc:
-        pytest.skip(f"Tk not available: {exc}")
+    from brkraw_viewer.ui import assets as _assets
+
+    _assets._load_icon_cached.cache_clear()  # cached PhotoImages are bound to the previous root
+    root = tk.Tk()
     root.geometry("1280x900+0+0")
     ctrl = ViewerController()
 

@@ -1,6 +1,6 @@
 # Public Bruker ParaVision raw datasets with a 4D scan (viewer checklist sections 3-5)
 
-Retrieved 2026-10-19. Nothing was downloaded beyond listings (Zenodo API metadata, GitHub API directory listings, Git LFS pointer files). Archive contents were not opened, so scan numbers inside archives are NOT verified unless stated.
+Retrieved 2026-10-19. The only fetches were listings: Zenodo API metadata, GitHub raw metadata.yaml and LFS pointer files; no archive was downloaded (the author's own statement). Archive contents were not opened, so scan numbers inside archives are NOT verified unless stated.
 
 ## Candidates
 
@@ -33,7 +33,7 @@ Retrieved 2026-10-19. Nothing was downloaded beyond listings (Zenodo API metadat
 - Licence: CC BY 4.0 (Zenodo API)
 - ParaVision: version not stated; description says "stored in the Bruker ParaVision format"
 - Size: 2,349,556,936 bytes, single file `samri_bindata-0.4.tar.xz`
-- 4D scan: not stated in the record ("diverse protocols"); presumably includes fMRI for SAMRI, not verified.
+- 4D scan: NONE IDENTIFIED. The record says only "diverse protocols" and lists one file; no scan can be named without opening the archive. Listed for completeness, not usable until its contents are listed.
 - Verified by: Zenodo API record only. Large with unlisted contents: poor first choice.
 
 ### 5. Zenodo 13683103 (v2) / 10992070 (v1), FUS DCE-MRI in mice
@@ -41,11 +41,11 @@ Retrieved 2026-10-19. Nothing was downloaded beyond listings (Zenodo API metadat
 - Licence: CC BY 4.0 (Zenodo API)
 - ParaVision: not stated (9.4T Bruker BioSpec USR 94/30)
 - Size: 4,132,633,210 bytes (v2 zip); v1 2,160,263,657 bytes
-- 4D scan: dynamic 3D FLASH DCE series would be 4D, but the record mixes real and simulated data and the format (ParaVision or not) is not stated. Not verified.
+- 4D scan: the record describes RF-spoiled 3D FLASH GASOS DCE-MRI sequences, i.e. dynamic 3D acquisitions (a time series of volumes, 4D by definition of DCE); the scan number is not stated. The record also holds simulated data, and whether files are ParaVision study folders is NOT stated (ParaVision format unverified), so not usable for sections 3-5 until checked.
 - Verified by: Zenodo API record; a data description PDF exists but was not read.
 
 ## Recommendation
 
-Recommend candidate 2 (brkraw-dataset PV6.0.1, 7.3 MB) to start the checklist: tiny, CC BY 4.0, maintained by the BrkRaw project for its own conversion tests, declared ParaVision 6.0.1 and a declared EPI scan 11. Then candidate 1 (PV5.1 rat BOLD-EPI, 231 MB) as a second dataset with a real BOLD time series. Both need Git LFS to fetch (the zip in the git tree is only a pointer), per the repository README.
+Recommend candidate 2 (brkraw-dataset PV6.0.1, 7.3 MB) to start the checklist: tiny, CC BY 4.0, maintained by the BrkRaw project for its own conversion tests, declared ParaVision 6.0.1 and a declared EPI scan 11 (4D is inferred, not shown: no repetition count is in the metadata and the archive was not opened). Then candidate 1 (PV5.1 rat BOLD-EPI, 231 MB) as a second dataset with a real BOLD time series. Both need Git LFS to fetch (the zip in the git tree is only a pointer), per the repository README.
 
 Caveats: (a) "EPI = 4D" is inferred from the sequence type; confirm the repetition count (PVM_NRepetitions in the method file) after the first fetch. (b) Candidate 2 is a phantom, so physiology-dependent checks are not exercised; use candidate 1 for those. (c) Candidates 3-5 are unverified fallbacks.

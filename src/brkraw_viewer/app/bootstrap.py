@@ -118,7 +118,7 @@ def _set_app_icon(root: tk.Tk) -> None:
     if png.exists():
         try:
             global _ICON_REF
-            img = tk.PhotoImage(file=str(png))
+            img = tk.PhotoImage(master=root, file=str(png))
             root.iconphoto(True, img)
             _ICON_REF = img  # prevent GC (module-level ref)
         except Exception:

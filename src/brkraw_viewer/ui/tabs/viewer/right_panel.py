@@ -13,7 +13,7 @@ class ViewerRightPanel(ttk.Frame):
         super().__init__(parent)
         self._callbacks = callbacks
         self._resize_job: Optional[str] = None
-        self._value_var = tk.StringVar(value="[ - ]")
+        self._value_var = tk.StringVar(master=self, value="[ - ]")
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
 
@@ -58,9 +58,9 @@ class ViewerRightPanel(ttk.Frame):
             scale.configure(variable=var)
             return scale
 
-        self._x_var = tk.IntVar(value=0)
-        self._y_var = tk.IntVar(value=0)
-        self._z_var = tk.IntVar(value=0)
+        self._x_var = tk.IntVar(master=self, value=0)
+        self._y_var = tk.IntVar(master=self, value=0)
+        self._z_var = tk.IntVar(master=self, value=0)
 
         self._y_scale = _axis_box(axis_bar, "Y", self._y_var, lambda v: self._on_axis(callbacks, "y", v), 0)
         self._z_scale = _axis_box(axis_bar, "Z", self._z_var, lambda v: self._on_axis(callbacks, "z", v), 1)
@@ -126,7 +126,7 @@ class ViewerRightPanel(ttk.Frame):
         
         frame_inner = ttk.Frame(bottom_bar)
         frame_inner.grid(row=0, column=0, sticky="w")
-        self._frame_var = tk.IntVar(value=0)
+        self._frame_var = tk.IntVar(master=self, value=0)
         frame_row, self._frame_scale = self._create_slider_row(
             frame_inner, "Frame", self._frame_var, 
             lambda v: self._on_frame(callbacks, v), length=160
@@ -141,7 +141,7 @@ class ViewerRightPanel(ttk.Frame):
 
         slicepack_box = ttk.Frame(bottom_bar)
         slicepack_box.grid(row=0, column=2, sticky="e")
-        self._slicepack_var = tk.IntVar(value=0)
+        self._slicepack_var = tk.IntVar(master=self, value=0)
         sp_row, self._slicepack_scale = self._create_slider_row(
             slicepack_box, "Slicepack", self._slicepack_var,
             lambda v: self._on_slicepack(callbacks, v), length=160
@@ -397,7 +397,7 @@ class ViewerRightPanel(ttk.Frame):
             self._extra_dim_vars = []
             self._extra_dim_scales = []
             for idx, size in enumerate(sizes):
-                var = tk.IntVar(value=0)
+                var = tk.IntVar(master=self, value=0)
                 row, scale = self._create_slider_row(
                     self._extra_frame, f"Dim {idx + 5}", var,
                     lambda v, i=idx: self._on_extra_dim(i, v), length=160

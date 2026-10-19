@@ -24,12 +24,12 @@ class MainWindow(ttk.Frame):
         super().__init__(master)
         self._cb = callbacks
 
-        self._path_var = tk.StringVar(value="")
-        self._status_var = tk.StringVar(value="Ready")
+        self._path_var = tk.StringVar(master=self, value="")
+        self._status_var = tk.StringVar(master=self, value="Ready")
 
-        self._study_id_var = tk.StringVar(value="None")
-        self._subject_id_var = tk.StringVar(value="None")
-        self._study_date_var = tk.StringVar(value="None")
+        self._study_id_var = tk.StringVar(master=self, value="None")
+        self._subject_id_var = tk.StringVar(master=self, value="None")
+        self._study_date_var = tk.StringVar(master=self, value="None")
         self._study_window: Optional[StudyInfoWindow] = None
         self._registry_window: Optional[RegistryWindow] = None
         self._task_window: Optional[TaskProgressWindow] = None

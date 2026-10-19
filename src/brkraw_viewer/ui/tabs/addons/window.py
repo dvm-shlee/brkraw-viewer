@@ -64,8 +64,8 @@ class AddonsTab:
         self._editor_windows: Dict[tuple, Any] = {}
         self._addon_rule_sections: Dict[str, Dict[str, Any]] = {}
         self._addon_spec_sections: Dict[str, Dict[str, Any]] = {}
-        self._addon_context_map_var = tk.StringVar(value="")
-        self._addon_context_status_var = tk.StringVar(value="No context map")
+        self._addon_context_map_var = tk.StringVar(master=parent, value="")
+        self._addon_context_status_var = tk.StringVar(master=parent, value="No context map")
         self._addon_transform_text: Optional[tk.Text] = None
         self._spec_tabs: Optional[ttk.Notebook] = None
 
@@ -73,12 +73,12 @@ class AddonsTab:
 
         for category in ("info_spec", "metadata_spec", "converter_hook"):
             self._addon_rule_sections[category] = {
-                "file_var": tk.StringVar(value="None"),
-                "name_var": tk.StringVar(value="None"),
-                "auto_var": tk.BooleanVar(value=True),
-                "status_var": tk.StringVar(value="Not configured"),
-                "desc_var": tk.StringVar(value=""),
-                "hook_var": tk.StringVar(value="None"),
+                "file_var": tk.StringVar(master=parent, value="None"),
+                "name_var": tk.StringVar(master=parent, value="None"),
+                "auto_var": tk.BooleanVar(master=parent, value=True),
+                "status_var": tk.StringVar(master=parent, value="Not configured"),
+                "desc_var": tk.StringVar(master=parent, value=""),
+                "hook_var": tk.StringVar(master=parent, value="None"),
                 "file_combo": None,
                 "combo": None,
                 "browse_button": None,
@@ -87,11 +87,11 @@ class AddonsTab:
             }
         for category in ("info_spec", "metadata_spec"):
             self._addon_spec_sections[category] = {
-                "auto_var": tk.BooleanVar(value=True),
-                "file_var": tk.StringVar(value="None"),
-                "name_var": tk.StringVar(value=""),
-                "status_var": tk.StringVar(value="Not configured"),
-                "desc_var": tk.StringVar(value=""),
+                "auto_var": tk.BooleanVar(master=parent, value=True),
+                "file_var": tk.StringVar(master=parent, value="None"),
+                "name_var": tk.StringVar(master=parent, value=""),
+                "status_var": tk.StringVar(master=parent, value="Not configured"),
+                "desc_var": tk.StringVar(master=parent, value=""),
                 "combo": None,
                 "name_entry": None,
                 "browse_button": None,

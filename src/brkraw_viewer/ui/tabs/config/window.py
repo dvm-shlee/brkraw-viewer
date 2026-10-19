@@ -38,7 +38,7 @@ class ConfigTab:
         ttk.Button(config_bar, text="Save", command=self._save_config_text).pack(side=tk.LEFT)
         ttk.Button(config_bar, text="Backup", command=self._backup_config_text).pack(side=tk.LEFT, padx=(6, 0))
         ttk.Button(config_bar, text="Reset", command=self._reset_config_text).pack(side=tk.LEFT, padx=(6, 0))
-        self._config_path_var = tk.StringVar(value="")
+        self._config_path_var = tk.StringVar(master=parent, value="")
         ttk.Label(config_bar, textvariable=self._config_path_var).pack(side=tk.LEFT, padx=(12, 0))
 
         config_body = ttk.Frame(config_tab, padding=(6, 6))

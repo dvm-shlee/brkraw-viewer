@@ -35,15 +35,15 @@ class ConvertTab:
         self._bind_mousewheel()
 
         # layout vars
-        self._layout_source_var = tk.StringVar(value="Config")
-        self._layout_auto_var = tk.BooleanVar(value=True)
-        self._layout_rule_var = tk.StringVar(value="")
-        self._layout_info_spec_var = tk.StringVar(value="")
-        self._layout_metadata_spec_var = tk.StringVar(value="")
-        self._layout_context_map_var = tk.StringVar(value="")
-        self._layout_template_var = tk.StringVar(value="")
+        self._layout_source_var = tk.StringVar(master=parent, value="Config")
+        self._layout_auto_var = tk.BooleanVar(master=parent, value=True)
+        self._layout_rule_var = tk.StringVar(master=parent, value="")
+        self._layout_info_spec_var = tk.StringVar(master=parent, value="")
+        self._layout_metadata_spec_var = tk.StringVar(master=parent, value="")
+        self._layout_context_map_var = tk.StringVar(master=parent, value="")
+        self._layout_template_var = tk.StringVar(master=parent, value="")
         self._layout_template_manual = ""
-        self._slicepack_suffix_var = tk.StringVar(value="_slpack{index}")
+        self._slicepack_suffix_var = tk.StringVar(master=parent, value="_slpack{index}")
         self._layout_source_combo: Optional[ttk.Combobox] = None
         self._layout_template_entry: Optional[ttk.Entry] = None
         self._layout_key_listbox: Optional[tk.Listbox] = None
@@ -52,26 +52,26 @@ class ConvertTab:
         self._layout_syncing = False
 
         # output vars
-        self._output_dir_var = tk.StringVar(value=os.getcwd())
+        self._output_dir_var = tk.StringVar(master=parent, value=os.getcwd())
         self._output_dir_var.trace_add("write", lambda *_: self._on_output_dir_change())
-        self._convert_sidecar_var = tk.BooleanVar(value=False)
-        self._convert_sidecar_format_var = tk.StringVar(value="json")
-        self._use_viewer_orientation_var = tk.BooleanVar(value=True)
-        self._space_var = tk.StringVar(value="scanner")
-        self._subject_type_var = tk.StringVar(value="Biped")
-        self._pose_primary_var = tk.StringVar(value="Head")
-        self._pose_secondary_var = tk.StringVar(value="Supine")
-        self._flip_x_var = tk.BooleanVar(value=False)
-        self._flip_y_var = tk.BooleanVar(value=False)
-        self._flip_z_var = tk.BooleanVar(value=False)
+        self._convert_sidecar_var = tk.BooleanVar(master=parent, value=False)
+        self._convert_sidecar_format_var = tk.StringVar(master=parent, value="json")
+        self._use_viewer_orientation_var = tk.BooleanVar(master=parent, value=True)
+        self._space_var = tk.StringVar(master=parent, value="scanner")
+        self._subject_type_var = tk.StringVar(master=parent, value="Biped")
+        self._pose_primary_var = tk.StringVar(master=parent, value="Head")
+        self._pose_secondary_var = tk.StringVar(master=parent, value="Supine")
+        self._flip_x_var = tk.BooleanVar(master=parent, value=False)
+        self._flip_y_var = tk.BooleanVar(master=parent, value=False)
+        self._flip_z_var = tk.BooleanVar(master=parent, value=False)
         self._use_viewer_check: Optional[ttk.Checkbutton] = None
         self._flip_x_check: Optional[ttk.Checkbutton] = None
         self._flip_y_check: Optional[ttk.Checkbutton] = None
         self._flip_z_check: Optional[ttk.Checkbutton] = None
 
         # hook vars
-        self._hook_enabled_var = tk.BooleanVar(value=True)
-        self._hook_name_var = tk.StringVar(value="None")
+        self._hook_enabled_var = tk.BooleanVar(master=parent, value=True)
+        self._hook_name_var = tk.StringVar(master=parent, value="None")
         self._hook_args: Optional[dict] = None
         self._hook_options_dialog: Optional[HookOptionsDialog] = None
 

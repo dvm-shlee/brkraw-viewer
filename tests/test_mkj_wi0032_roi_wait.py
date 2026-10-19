@@ -27,18 +27,20 @@ from test_mkj_wi0020_checklist_gui import _expected, gui  # noqa: F401  (fixture
 
 @pytest.fixture
 def slow(gui):
-    """The window's worker, answering only after ``ticks`` calls of ``check_results``."""
+    """The window's worker, answering only once ``delay`` seconds have passed since the first poll."""
     ctrl = gui.ctrl
     immediate = ctrl._worker.submit
     held = []
-    state = SimpleNamespace(ticks=3, held=held, polls=0, frozen=False)
+    state = SimpleNamespace(delay=0.15, held=held, polls=0, frozen=False, t0=None)
 
     def submit(req):
         held.append(req)
 
     def check_results():
         state.polls += 1
-        if state.frozen or state.polls < state.ticks:
+        if state.t0 is None:
+            state.t0 = time.monotonic()
+        if state.frozen or time.monotonic() - state.t0 < state.delay:
             return
         while held:
             immediate(held.pop(0))
@@ -63,7 +65,7 @@ def test_r2_wait_returns_the_answer(gui, slow):
     values, n = _expected((2, 5, 1, 3), "rect", 2, got["index"])
     assert got["n_mask"] == n
     assert got["values"] == pytest.approx(values)
-    assert slow.polls >= slow.ticks  # it did wait for the worker
+    assert slow.polls >= 2 # it did wait for the worker
 
 
 def test_r3_wait_inside_a_button_callback_keeps_tk_alive(gui, slow):
@@ -111,6 +113,7 @@ def test_r5_replaced_roi_gives_the_new_answer(gui, slow):
     ctrl.set_roi("rect", (0, 1, 0, 1), axis=2)  # 4 voxels
     gui.root.after(30, lambda: ctrl.set_roi("rect", (0, 3, 0, 3), axis=2))  # 16 voxels
     got = ctrl.roi_timecourse(wait=True, timeout=5.0)
+    assert slow.polls > 0  # the 30 ms replacement landed inside the wait (answers after 150 ms)
     assert got["n_mask"] == 16
     assert got["values"] == pytest.approx(_expected((0, 3, 0, 3), "rect", 2, got["index"])[0])
 

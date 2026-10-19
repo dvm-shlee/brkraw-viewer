@@ -59,6 +59,11 @@ by extensions; they are not a versioned API:
   - `app.roi_timecourse()`: `None` until the answer is in; then a dict with
     `values` (mean of the finite voxels per frame, NaN for a frame with none),
     `n_mask`, `n_per_frame`, `shape`, `axis`, `index`.
+  - `app.roi_timecourse(wait=True, timeout=5.0)`: blocks until the answer for the current ROI
+    is in and returns the same dict. Safe in a button callback: Tk events (and the worker's
+    result) are still processed while it waits. Raises `TimeoutError` after `timeout` seconds
+    (`None` waits without limit) and `ValueError` without a ROI. If the ROI is replaced while
+    waiting it returns the new ROI's answer; if it is cleared it raises `ValueError`.
 
   The Viewer tab's ROI tool (Off / Square / Circle, see the user guide) calls the same
   `set_roi` on release and `clear_roi` on Esc or tool off; the overlay follows the

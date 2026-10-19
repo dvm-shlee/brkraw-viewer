@@ -1184,13 +1184,52 @@ class ViewerController:
         if had:
             self._render_viewer_views()
 
-    def roi_timecourse(self) -> Optional[dict]:
+    def roi_timecourse(self, wait: bool = False, timeout: Optional[float] = None) -> Optional[dict]:
         """The ROI's mean per frame once the worker has answered, else None (provisional API).
 
         Keys: ``values`` (mean of the finite voxels per frame), ``n_mask`` (voxels in the mask),
         ``n_per_frame``, ``shape``, ``axis``, ``index``. None without a ROI or while the answer
         is pending or no longer current.
+
+        With ``wait=True`` the call blocks until the answer for the current ROI is in and returns
+        the dict. It keeps the Tk event loop running while it waits, so it is safe on the main
+        thread (a hook callback). Raises ``ValueError`` without a ROI (also if it is cleared while
+        waiting) and ``TimeoutError`` after ``timeout`` seconds (None waits without limit). A ROI
+        replaced while waiting is answered by the new ROI's result, never the stale one.
         """
+        if not wait:
+            return self._roi_answer()
+        import time
+
+        if self._roi is None:
+            raise ValueError("No ROI set.")
+        limit = None if timeout is None else float(timeout)
+        end = None if limit is None else time.monotonic() + limit
+        while True:
+            if self._roi is None:
+                raise ValueError("No ROI set.")
+            ans = self._roi_answer()
+            if ans is not None:
+                return ans
+            if end is not None and time.monotonic() >= end:
+                raise TimeoutError(f"ROI timecourse not ready after {limit:g} s.")
+            self._pump_events()
+            time.sleep(0.005)
+
+    def _pump_events(self) -> None:
+        """Deliver worker results and let Tk handle events (one step of a blocking wait)."""
+        try:
+            self._worker.check_results()
+        except Exception:
+            logger.debug("worker poll failed", exc_info=True)
+        upd = getattr(self._view, "update", None)
+        if callable(upd):
+            try:
+                upd()
+            except Exception:
+                logger.debug("event pump failed", exc_info=True)
+
+    def _roi_answer(self) -> Optional[dict]:
         roi, ans = self._roi, self._roi_series
         if roi is None or ans is None or ans["key"] != self._roi_key():
             return None

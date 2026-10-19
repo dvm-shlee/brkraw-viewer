@@ -39,3 +39,22 @@ Adopted 2026-10-16 (office#7).
   `ValueError("mode: got 'blur', expected one of ['mean', 'max']")`.
 
 Adopted 2026-10-16 (office#7).
+
+## GUI code and tests (candidates, pending the Director's review)
+
+Observed practice from 2026-10-19 (WI-0020..WI-0029):
+
+- Every Tk variable and `PhotoImage` gets an explicit `master` (its own
+  widget or root); never rely on the default root. Example:
+  `tk.StringVar(master=self.frame, value="")`.
+- GUI tests destroy their Tk root in teardown (a fixture with `try/finally`
+  or `yield`), so the next test cannot bind to a dead root. Example:
+  `root = tk.Tk(); yield root; root.destroy()`.
+- Mouse-wheel handling binds `<MouseWheel>`: Tk 9 delivers wheel scrolls
+  there; `Button-4`/`Button-5` only on old X11 Tk. Example:
+  `canvas.bind("<MouseWheel>", self._on_wheel)`.
+- GUI tests run in a real Tk window under a virtual display (Xvfb) with
+  `BRKRAW_VIEWER_SMOKE=1`; see [Running the GUI tests](dev/gui.md).
+  Example: `BRKRAW_VIEWER_SMOKE=1 xvfb-run -a <test command>`.
+
+Proposed 2026-10-19 (office#21); not yet adopted.

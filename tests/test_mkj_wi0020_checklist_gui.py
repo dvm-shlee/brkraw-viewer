@@ -145,6 +145,24 @@ class Gui:
         canvas.event_generate("<Escape>")
         self.root.update()
 
+    def scroll(self, plane="xy", up=True):
+        """One mouse-wheel notch over a view, delivered the way the running Tk delivers a wheel.
+
+        Tk 8.7+ (TIP 474) turns X11 buttons 4/5 into ``<MouseWheel>`` events with a delta of 120
+        per notch, so a generated ``<Button-4>`` does not reach the wheel handler there (the
+        failure on head a7cd7ca2); Tk 8.6 on X11 delivers the wheel as buttons 4/5.
+        """
+        canvas = self.views[plane]._canvas
+        x, y = self.xy_of(plane, 3, 3)
+        self.root.focus_force()
+        canvas.focus_force()
+        self.root.update()
+        if tk.TkVersion >= 8.7 or sys.platform.startswith("win") or sys.platform == "darwin":
+            canvas.event_generate("<MouseWheel>", x=x, y=y, delta=120 if up else -120)
+        else:
+            canvas.event_generate("<Button-4>" if up else "<Button-5>", x=x, y=y)
+        self.root.update()
+
     def idx(self):
         st = self.ctrl.state.viewer
         return (st.x_index, st.y_index, st.z_index)
@@ -202,6 +220,8 @@ def gui(monkeypatch, tmp_path):
     assert g.pump(lambda: all(v._render_state is not None for v in g.views.values()), 5.0)
     yield g
     try:
+        for job in root.tk.splitlist(root.tk.call("after", "info")):
+            root.after_cancel(job)  # pending resize/poll callbacks would outlive the root
         root.destroy()
     except tk.TclError:
         pass
@@ -288,8 +308,7 @@ def test_s4_drag_sets_square_and_circle_and_esc_off_click_slice_frame(gui):
     gui.pump(lambda: False, 0.6)  # the frame request is delayed, then answered
     assert ctrl.state.viewer.frame_index == 2
     assert ctrl._roi is not None and gui.pump(gui.answered)
-    gui.views["xy"]._canvas.event_generate("<Button-4>", x=40, y=40)  # scroll to another slice
-    gui.root.update()
+    gui.scroll("xy", up=z < SHAPE[2] - 1)  # scroll to another slice on that axis
     assert ctrl.state.viewer.z_index != z
     assert ctrl._roi is None and gui.views["xy"]._shape_data is None
 

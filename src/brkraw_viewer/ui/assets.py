@@ -33,6 +33,25 @@ def load_icon(
         return None
 
 
+class _LoadIconCachedShim:
+    """Compatibility shim for the old module-level _load_icon_cached lru_cache.
+
+    Icons are now cached per Tk root (see load_icon); cache_clear drops the
+    cache of the default root so callers that still invoke it keep working.
+    """
+
+    def cache_clear(self) -> None:
+        root = tk._get_default_root()  # type: ignore[attr-defined]
+        if root is not None:
+            try:
+                root.nametowidget(".").__dict__.pop("_brkraw_icon_cache", None)
+            except Exception:
+                pass
+
+
+_load_icon_cached = _LoadIconCachedShim()
+
+
 def _build_icon(name: str, size: Tuple[int, int] | None, invert: bool, root: tk.Misc) -> tk.PhotoImage:
     assets_dir = Path(__file__).resolve().parents[1] / "assets"
     icon_path = assets_dir / name

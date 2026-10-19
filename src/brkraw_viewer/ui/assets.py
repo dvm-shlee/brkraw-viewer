@@ -17,10 +17,13 @@ def load_icon(
     """Load an icon bound to the Tk root of master, optionally resized.
 
     Icons are cached per root (on the root widget), so two roots never share a PhotoImage.
+    Without master the current default root is used; with none, the result is None. The
+    default root is read, never created: ``tk._get_default_root()`` would open a hidden Tk
+    root that later windows' Tk variables bind to (WI-0022).
     """
     try:
         if master is None:
-            master = tk._get_default_root()  # type: ignore[attr-defined]
+            master = getattr(tk, "_default_root", None)
         if master is None:
             return None
         root = master.nametowidget(".")
@@ -38,10 +41,11 @@ class _LoadIconCachedShim:
 
     Icons are now cached per Tk root (see load_icon); cache_clear drops the
     cache of the default root so callers that still invoke it keep working.
+    With no default root it does nothing; it never creates one.
     """
 
     def cache_clear(self) -> None:
-        root = tk._get_default_root()  # type: ignore[attr-defined]
+        root = getattr(tk, "_default_root", None)
         if root is not None:
             try:
                 root.nametowidget(".").__dict__.pop("_brkraw_icon_cache", None)

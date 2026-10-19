@@ -106,12 +106,14 @@ def bring_to_front_once(root: "tk.Tk") -> None:
     root.after(250, _try)
 
 
+def _icon_paths() -> tuple[Path, Path]:
+    assets = Path(__file__).resolve().parents[1] / "assets"
+    return assets / "icon.png", assets / "icon.ico"
+
+
 def _set_app_icon(root: tk.Tk) -> None:
     try:
-        package_root = Path(__file__).resolve().parents[2]
-        assets = package_root / "assets"
-        png = assets / "icon.png"
-        ico = assets / "icon.ico"
+        png, ico = _icon_paths()
     except Exception:
         return
 

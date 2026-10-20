@@ -4,7 +4,9 @@ from dataclasses import dataclass, field, replace
 from typing import Tuple, Optional, Dict, Any, List, Callable
 import numpy as np
 
-KINDS = ("image", "label")
+KINDS = ("image", "label", "rgb")
+RGB_CHANNELS = (3, 4)
+RGB_IGNORED_FIELDS = ("cmap", "window", "transparency")
 SOURCES = ("scan", "array", "file")
 FRAME_POLICIES = ("linked", "fixed")
 INTERPOLATIONS = ("linear", "nearest")
@@ -36,6 +38,7 @@ class Layer:
     interpolation: str = "linear"
     editable: bool = False
     nbytes: int = 0
+    channels: int = 1
 
     def __post_init__(self):
         if not isinstance(self.id, str) or not self.id:
@@ -64,6 +67,22 @@ class Layer:
         if self.affine.shape != (4, 4):
             raise LayerError("affine")
             
+        if self.kind == "rgb":
+            # the last axis holds colour channels, never frames
+            if len(self.shape) != 4 or self.shape[3] not in RGB_CHANNELS:
+                raise LayerError(f"shape: got {self.shape}, expected (X, Y, Z, 3) or (X, Y, Z, 4) for kind 'rgb'")
+            if str(self.dtype) != "uint8":
+                raise LayerError(f"dtype: got {str(self.dtype)!r}, expected 'uint8' for kind 'rgb'")
+            self.channels = self.shape[3]
+            self.frames = 1
+        else:
+            try:
+                ch = int(self.channels)
+            except (TypeError, ValueError):
+                ch = -1
+            if ch != 1:
+                raise LayerError(f"channels: got {self.channels!r}, expected 1 for kind {self.kind!r}")
+
         try:
             self.frames = int(self.frames)
         except (TypeError, ValueError):
@@ -105,6 +124,8 @@ class Layer:
             self.interpolation = "nearest"
         elif self.kind == "image" and self.editable:
             raise LayerError("editable")
+        elif self.kind == "rgb" and self.editable:
+            raise LayerError("editable: got True, expected False for kind 'rgb'")
             
         try:
             self.nbytes = int(self.nbytes)
@@ -211,6 +232,8 @@ class LayerStack:
         for key, value in fields.items():
             if key not in EDITABLE_FIELDS:
                 raise LayerError(f"field: {key}")
+            if layer.kind == "rgb" and key in RGB_IGNORED_FIELDS:
+                raise LayerError(f"field: got {key!r}, not editable for kind 'rgb' (colour comes from the channels)")
             
             if key == "alpha":
                 try:

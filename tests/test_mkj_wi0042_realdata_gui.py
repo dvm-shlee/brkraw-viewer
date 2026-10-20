@@ -236,6 +236,27 @@ def test_s3_open_dataset_select_scan_11_and_switch_roi_tool(real):
     g.choose("Off")
 
 
+def _assert_mask_in_drag_bounds(g, tool, mask):
+    """The mask's nonzero bounding box lies inside the dragged bounds (1 pixel slack) and the image."""
+    (r0, c0), (r1, c1) = g.drag_box()  # axial image (row, col); the mask is laid out (u=col, v=row)
+    u_lo, u_hi, v_lo, v_hi = min(c0, c1), max(c0, c1), min(r0, r1), max(r0, r1)
+    if tool == "Circle":  # the circle is centred on the drag with radius half the drag diagonal
+        cu, cv = (u_lo + u_hi) / 2, (v_lo + v_hi) / 2
+        rad = float(np.hypot(u_hi - u_lo, v_hi - v_lo)) / 2
+        u_lo, u_hi, v_lo, v_hi = cu - rad, cu + rad, cv - rad, cv + rad
+    us = np.flatnonzero(mask.any(axis=1))
+    vs = np.flatnonzero(mask.any(axis=0))
+    assert us.size and vs.size, f"{tool}: empty ROI mask"
+    nu, nv = mask.shape
+    assert us.min() >= 0 and us.max() < nu and vs.min() >= 0 and vs.max() < nv  # inside the image plane
+    assert us.min() >= u_lo - 1 and us.max() <= u_hi + 1, (
+        f"{tool}: mask u range {us.min()}..{us.max()} outside drag {u_lo}..{u_hi}")
+    assert vs.min() >= v_lo - 1 and vs.max() <= v_hi + 1, (
+        f"{tool}: mask v range {vs.min()}..{vs.max()} outside drag {v_lo}..{v_hi}")
+    # the mask must also fill most of the drag, so a wrong-place or tiny mask fails too
+    assert us.max() - us.min() >= 0.5 * (u_hi - u_lo) and vs.max() - vs.min() >= 0.5 * (v_hi - v_lo)
+
+
 def _check_roi_and_plot(g, tool, shape):
     ctrl = g.ctrl
     assert g.nrep > 1, f"repetitions read from the dataset: {g.nrep}"
@@ -248,6 +269,7 @@ def _check_roi_and_plot(g, tool, shape):
     plane = tuple(int(n) for n in np.shape(ctrl._viewer_volume)[:2])
     assert mask.shape == plane, f"mask {mask.shape} is not the image plane {plane}"
     assert int(mask.sum()) > 0, f"{tool}: empty ROI mask"
+    _assert_mask_in_drag_bounds(g, tool, mask)
     assert g.views["xy"]._shape_data is not None  # drawn on the image
 
     tc = ctrl.roi_timecourse()  # s5: one value per repetition

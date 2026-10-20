@@ -40,7 +40,7 @@ from brkraw import api as brkapi
 from brkraw.api.types import SubjectType, SubjectPose, AffineSpace
 from brkraw_viewer.utils.orientation import reorient_to_ras, ras_display_affine
 from brkraw_viewer.core.composite import label_rgba, layer_rgba, rgb_rgba, transparency_mask
-from brkraw_viewer.core.layers import Layer, LayerStack
+from brkraw_viewer.core.layers import Layer, LayerError, LayerStack
 from brkraw_viewer.core.resample import Grid, grid_matrix, sample_slice
 from brkraw_viewer.core.window import default_window
 from brkraw.api.types import (
@@ -728,7 +728,7 @@ class ViewerController:
                     raise ValueError("data: got float values outside 0..1 or not finite, expected finite floats in 0..1 for kind 'rgb'")
                 arr = np.floor(arr.astype(np.float64) * 255.0 + 0.5).astype(np.uint8)
             else:
-                raise ValueError(f"data: got dtype {arr.dtype}, expected uint8 or float in 0..1 for kind 'rgb'")
+                raise LayerError(f"data: got dtype {arr.dtype}, expected uint8 or float in 0..1 for kind 'rgb'")
             frames = 1
         else:
             frames = int(arr.shape[3]) if arr.ndim >= 4 else 1

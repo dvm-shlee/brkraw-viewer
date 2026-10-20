@@ -121,7 +121,7 @@ def rgb_rgba(
     if v.ndim != 3 or v.shape[2] not in (3, 4):
         raise ValueError(f"values: got shape {v.shape}, expected (h, w, 3) or (h, w, 4)")
     if not (0.0 <= alpha <= 1.0):
-        raise ValueError("alpha must be between 0.0 and 1.0")
+        raise ValueError(f"alpha: got {alpha!r}, expected a value between 0.0 and 1.0")
 
     v = v.astype(np.float64)
     missing = np.isnan(v).any(axis=2)

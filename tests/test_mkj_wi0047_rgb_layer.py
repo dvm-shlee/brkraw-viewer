@@ -235,3 +235,8 @@ def test_nearest_vs_linear_sampling(ctrl):
     i = np.arange(1, shape[0])
     np.testing.assert_allclose(rgb_lin[0, 1:, 0], 10 * (i - 0.25), atol=1e-4)
     np.testing.assert_array_equal(rgb_near[0, 1:, 0], 10 * i)
+
+
+def test_rgb_layer_accepts_arrays_only():
+    with pytest.raises(LayerError, match=r"source: got 'scan', expected 'array'"):
+        make_layer(source="scan")

@@ -68,6 +68,8 @@ class Layer:
             raise LayerError("affine")
             
         if self.kind == "rgb":
+            if self.source != "array":
+                raise LayerError(f"source: got {self.source!r}, expected 'array' for kind 'rgb'")
             # the last axis holds colour channels, never frames
             if len(self.shape) != 4 or self.shape[3] not in RGB_CHANNELS:
                 raise LayerError(f"shape: got {self.shape}, expected (X, Y, Z, 3) or (X, Y, Z, 4) for kind 'rgb'")

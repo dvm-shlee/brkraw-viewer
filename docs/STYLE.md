@@ -40,7 +40,7 @@ Adopted 2026-10-16 (office#7).
 
 Adopted 2026-10-16 (office#7).
 
-## GUI code and tests (candidates, pending the Director's review)
+## GUI code and tests
 
 Observed practice from 2026-10-19 (WI-0020..WI-0029):
 
@@ -57,4 +57,4 @@ Observed practice from 2026-10-19 (WI-0020..WI-0029):
   `BRKRAW_VIEWER_SMOKE=1`; see [Running the GUI tests](dev/gui.md).
   Example: `BRKRAW_VIEWER_SMOKE=1 xvfb-run -a <test command>`.
 
-Proposed 2026-10-19 (office#21); not yet adopted.
+Adopted 2026-10-20 (office#21, Director).

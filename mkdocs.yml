@@ -29,3 +29,4 @@ nav:
       - GUI Best Practices: dev/gui.md
       - Release Flow: dev/release.md
       - Contributors: dev/contributors.md
+      - Style Notes: STYLE.md

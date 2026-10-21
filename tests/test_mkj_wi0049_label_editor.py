@@ -183,3 +183,22 @@ def test_nifti_errors(tmp_path):
         save_label_nifti(np.zeros((2, 2, 2)), aff, tmp_path / "a.nii.gz")
     with pytest.raises(ValueError, match="affine: got"):
         save_label_nifti(np.zeros((2, 2, 2), dtype=np.uint8), np.eye(3), tmp_path / "a.nii.gz")
+
+
+def test_undo_same_voxel_two_labels_in_one_stroke():
+    ed = LabelEditor(np.zeros((5, 5, 5), dtype=np.uint8))
+    ed.begin_stroke()
+    ed.label = 1
+    ed.stamp(2, 2, 2, 2)
+    ed.label = 2
+    ed.stamp(2, 2, 2, 2)
+    ed.end_stroke()
+    assert ed.data[2, 2, 2] == 2
+    ed.undo()
+    assert ed.data[2, 2, 2] == 0
+
+
+def test_set_brush_bad_type_message():
+    ed = LabelEditor(np.zeros((3, 3, 3), dtype=np.uint8))
+    with pytest.raises(ValueError, match="brush_size"):
+        ed.set_brush("bad")

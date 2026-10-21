@@ -89,12 +89,20 @@ class LabelEditor:
 
     @label.setter
     def label(self, value: int) -> None:
-        if isinstance(value, bool) or int(value) != value or int(value) <= 0:
+        try:
+            ok = not isinstance(value, bool) and int(value) == value and int(value) > 0
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
             raise ValueError(f"label: got {value!r}, expected an integer > 0")
         self._label = int(value)
 
     def set_brush(self, size: int) -> None:
-        if isinstance(size, bool) or int(size) != size or int(size) < 1:
+        try:
+            ok = not isinstance(size, bool) and int(size) == size and int(size) >= 1
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
             raise ValueError(f"brush_size: got {size!r}, expected an integer >= 1")
         self.brush_size = int(size)
 
@@ -191,6 +199,8 @@ class LabelEditor:
             return
         flat = np.concatenate([p[0] for p in parts])
         old = np.concatenate([p[1] for p in parts])
+        flat, first = np.unique(flat, return_index=True)  # keep earliest old value per voxel
+        old = old[first]
         self._undo.append((flat, old))
         self._undo_bytes += flat.nbytes + old.nbytes
         while self._undo and self._undo_bytes > self.max_undo_bytes:

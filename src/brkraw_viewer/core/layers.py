@@ -42,30 +42,30 @@ class Layer:
 
     def __post_init__(self):
         if not isinstance(self.id, str) or not self.id:
-            raise LayerError("id")
+            raise LayerError(f"id: got {self.id!r}, expected a non-empty str")
         
         if self.kind not in KINDS:
-            raise LayerError("kind")
+            raise LayerError(f"kind: got {self.kind!r}, expected one of {sorted(KINDS)}")
         if self.source not in SOURCES:
-            raise LayerError("source")
+            raise LayerError(f"source: got {self.source!r}, expected one of {sorted(SOURCES)}")
         if self.frame_policy not in FRAME_POLICIES:
-            raise LayerError("frame_policy")
+            raise LayerError(f"frame_policy: got {self.frame_policy!r}, expected one of {sorted(FRAME_POLICIES)}")
         if self.interpolation not in INTERPOLATIONS:
-            raise LayerError("interpolation")
+            raise LayerError(f"interpolation: got {self.interpolation!r}, expected one of {sorted(INTERPOLATIONS)}")
         
         try:
             self.shape = tuple(int(n) for n in self.shape)
         except (TypeError, ValueError):
-            raise LayerError("shape")
+            raise LayerError(f"shape: got {self.shape!r}, expected a sequence of integers")
         if len(self.shape) < 3 or any(n < 1 for n in self.shape):
-            raise LayerError("shape")
+            raise LayerError(f"shape: got {self.shape!r}, expected at least 3 dimensions, each >= 1")
             
         try:
             self.affine = np.array(self.affine, dtype=np.float64)
         except (TypeError, ValueError):
-            raise LayerError("affine")
+            raise LayerError(f"affine: got {self.affine!r}, expected a numeric 4x4 matrix")
         if self.affine.shape != (4, 4):
-            raise LayerError("affine")
+            raise LayerError(f"affine: got shape {self.affine.shape}, expected (4, 4)")
             
         if self.kind == "rgb":
             if self.source != "array":
@@ -88,16 +88,16 @@ class Layer:
         try:
             self.frames = int(self.frames)
         except (TypeError, ValueError):
-            raise LayerError("frames")
+            raise LayerError(f"frames: got {self.frames!r}, expected an integer")
         if self.frames < 1:
-            raise LayerError("frames")
+            raise LayerError(f"frames: got {self.frames!r}, expected an integer >= 1")
             
         try:
             self.fixed_frame = int(self.fixed_frame)
         except (TypeError, ValueError):
-            raise LayerError("fixed_frame")
+            raise LayerError(f"fixed_frame: got {self.fixed_frame!r}, expected an integer")
         if not (0 <= self.fixed_frame < self.frames):
-            raise LayerError("fixed_frame")
+            raise LayerError(f"fixed_frame: got {self.fixed_frame!r}, expected an integer in [0, {self.frames})")
             
         # Field rules
         try:
@@ -112,29 +112,29 @@ class Layer:
                 a, b = self.window
                 self.window = (float(a), float(b))
                 if not (np.isfinite(self.window[0]) and np.isfinite(self.window[1]) and self.window[1] > self.window[0]):
-                    raise LayerError("window")
+                    raise LayerError(f"window: got {self.window!r}, expected finite (lo, hi) with hi > lo")
             except (TypeError, ValueError):
-                raise LayerError("window")
+                raise LayerError(f"window: got {self.window!r}, expected finite (lo, hi) with hi > lo")
                 
         if not isinstance(self.transparency, dict):
-            raise LayerError("transparency")
+            raise LayerError(f"transparency: got {self.transparency!r}, expected a dict")
         if any(k not in TRANSPARENCY_KEYS for k in self.transparency):
-            raise LayerError("transparency")
+            raise LayerError(f"transparency: got {sorted(map(str, self.transparency))}, expected keys within {sorted(TRANSPARENCY_KEYS)}")
         self.transparency = dict(self.transparency)
         
         if self.kind == "label":
             self.interpolation = "nearest"
         elif self.kind == "image" and self.editable:
-            raise LayerError("editable")
+            raise LayerError("editable: got True, expected False for kind 'image'")
         elif self.kind == "rgb" and self.editable:
             raise LayerError("editable: got True, expected False for kind 'rgb'")
             
         try:
             self.nbytes = int(self.nbytes)
         except (TypeError, ValueError):
-            raise LayerError("nbytes")
+            raise LayerError(f"nbytes: got {self.nbytes!r}, expected an integer")
         if self.nbytes < 0:
-            raise LayerError("nbytes")
+            raise LayerError(f"nbytes: got {self.nbytes!r}, expected an integer >= 0")
 
 class LayerStack:
     def __init__(self):
@@ -167,13 +167,13 @@ class LayerStack:
         for l in self._layers:
             if l.id == layer_id:
                 return l
-        raise LayerError("unknown")
+        raise LayerError(f"layer_id: got {layer_id!r}, expected one of {self.ids()} (unknown layer)")
 
     def index(self, layer_id: str) -> int:
         for i, l in enumerate(self._layers):
             if l.id == layer_id:
                 return i
-        raise LayerError("unknown")
+        raise LayerError(f"layer_id: got {layer_id!r}, expected one of {self.ids()} (unknown layer)")
 
     @property
     def base(self) -> Optional[Layer]:
@@ -181,11 +181,11 @@ class LayerStack:
 
     def add(self, layer: Layer, index: Optional[int] = None) -> int:
         if any(l.id == layer.id for l in self._layers):
-            raise LayerError("duplicate")
+            raise LayerError(f"id: got {layer.id!r}, expected an id not already in the stack (duplicate)")
         
         base = self.base
         if base and layer.space != base.space:
-            raise LayerError(f"space: {layer.space} vs {base.space}")
+            raise LayerError(f"space: got {layer.space!r}, expected {base.space!r} (the base layer's space)")
             
         if not self._layers:
             self._layers.insert(0, layer)
@@ -196,7 +196,7 @@ class LayerStack:
                 pos = len(self._layers) - 1
             else:
                 if not (1 <= index <= len(self._layers)):
-                    raise LayerError("index")
+                    raise LayerError(f"index: got {index!r}, expected an integer in [1, {len(self._layers)}]")
                 self._layers.insert(index, layer)
                 pos = index
                 
@@ -206,7 +206,7 @@ class LayerStack:
     def remove(self, layer_id: str) -> Layer:
         idx = self.index(layer_id)
         if idx == 0 and len(self._layers) > 1:
-            raise LayerError("base")
+            raise LayerError(f"layer_id: got {layer_id!r}, expected a non-base layer (the base layer cannot be removed while others exist)")
         
         layer = self._layers.pop(idx)
         self._emit("layer_removed", layer_id, {"index": idx, "nbytes": layer.nbytes, "source": layer.source})
@@ -215,9 +215,9 @@ class LayerStack:
     def move(self, layer_id: str, new_index: int) -> None:
         old_idx = self.index(layer_id)
         if old_idx == 0:
-            raise LayerError("base")
+            raise LayerError(f"layer_id: got {layer_id!r}, expected a non-base layer (the base layer cannot be moved)")
         if not (1 <= new_index <= len(self._layers) - 1):
-            raise LayerError("index")
+            raise LayerError(f"index: got {new_index!r}, expected an integer in [1, {len(self._layers) - 1}]")
             
         if old_idx == new_index:
             return
@@ -233,16 +233,16 @@ class LayerStack:
         normalized = {}
         for key, value in fields.items():
             if key not in EDITABLE_FIELDS:
-                raise LayerError(f"field: {key}")
+                raise LayerError(f"field: got {key!r}, expected one of {sorted(EDITABLE_FIELDS)}")
             if layer.kind == "rgb" and key in RGB_IGNORED_FIELDS:
                 raise LayerError(f"field: got {key!r}, not editable for kind 'rgb' (colour comes from the channels)")
             
             if key == "alpha":
                 try:
                     v = float(value)
-                    if not (0.0 <= v <= 1.0): raise LayerError("alpha")
+                    if not (0.0 <= v <= 1.0): raise LayerError(f"alpha: got {value!r}, expected a number in 0.0..1.0")
                     normalized[key] = v
-                except (TypeError, ValueError): raise LayerError("alpha")
+                except (TypeError, ValueError): raise LayerError(f"alpha: got {value!r}, expected a number in 0.0..1.0")
             elif key == "window":
                 if value is None:
                     normalized[key] = None
@@ -251,34 +251,36 @@ class LayerStack:
                         a, b = value
                         v = (float(a), float(b))
                         if not (np.isfinite(v[0]) and np.isfinite(v[1]) and v[1] > v[0]):
-                            raise LayerError("window")
+                            raise LayerError(f"window: got {value!r}, expected None or finite (lo, hi) with hi > lo")
                         normalized[key] = v
-                    except (TypeError, ValueError): raise LayerError("window")
+                    except (TypeError, ValueError): raise LayerError(f"window: got {value!r}, expected None or finite (lo, hi) with hi > lo")
             elif key == "transparency":
-                if not isinstance(value, dict): raise LayerError("transparency")
-                if any(k not in TRANSPARENCY_KEYS for k in value): raise LayerError("transparency")
+                if not isinstance(value, dict): raise LayerError(f"transparency: got {value!r}, expected a dict")
+                if any(k not in TRANSPARENCY_KEYS for k in value): raise LayerError(f"transparency: got {sorted(map(str, value))}, expected keys within {sorted(TRANSPARENCY_KEYS)}")
                 normalized[key] = dict(value)
             elif key == "interpolation":
-                if value not in INTERPOLATIONS: raise LayerError("interpolation")
-                if layer.kind == "label" and value != "nearest": raise LayerError("interpolation")
+                if value not in INTERPOLATIONS: raise LayerError(f"interpolation: got {value!r}, expected one of {sorted(INTERPOLATIONS)}")
+                if layer.kind == "label" and value != "nearest": raise LayerError(f"interpolation: got {value!r}, expected 'nearest' for kind 'label'")
                 normalized[key] = value
             elif key == "frame_policy":
-                if value not in FRAME_POLICIES: raise LayerError("frame_policy")
+                if value not in FRAME_POLICIES: raise LayerError(f"frame_policy: got {value!r}, expected one of {sorted(FRAME_POLICIES)}")
                 normalized[key] = value
             elif key == "fixed_frame":
                 try:
                     v = int(value)
-                    if not (0 <= v < layer.frames): raise LayerError("fixed_frame")
+                    if not (0 <= v < layer.frames): raise LayerError(f"fixed_frame: got {value!r}, expected an integer in [0, {layer.frames})")
                     normalized[key] = v
-                except (TypeError, ValueError): raise LayerError("fixed_frame")
+                except (TypeError, ValueError): raise LayerError(f"fixed_frame: got {value!r}, expected an integer in [0, {layer.frames})")
             elif key in ("name", "cmap"):
-                if not isinstance(value, str): raise LayerError(key)
+                if not isinstance(value, str):
+                    if key == "name": raise LayerError(f"name: got {value!r}, expected a str")
+                    raise LayerError(f"cmap: got {value!r}, expected a str")
                 normalized[key] = value
             elif key == "visible":
                 normalized[key] = bool(value)
             else:
                 # This part should not be reached due to EDITABLE_FIELDS check
-                raise LayerError("field")
+                raise LayerError(f"field: got {key!r}, expected one of {sorted(EDITABLE_FIELDS)}")
 
         # Application phase
         changed = []
@@ -296,9 +298,9 @@ class LayerStack:
         try:
             new_cursor = tuple(float(v) for v in ijk)
             if len(new_cursor) != 3:
-                raise LayerError("cursor")
+                raise LayerError(f"cursor: got {ijk!r}, expected three numbers")
         except (TypeError, ValueError):
-            raise LayerError("cursor")
+            raise LayerError(f"cursor: got {ijk!r}, expected three numbers")
             
         if new_cursor != self.cursor:
             self.cursor = new_cursor
@@ -308,9 +310,9 @@ class LayerStack:
         try:
             f = int(frame)
         except (TypeError, ValueError):
-            raise LayerError("frame")
+            raise LayerError(f"frame: got {frame!r}, expected an integer >= 0")
         if f < 0:
-            raise LayerError("frame")
+            raise LayerError(f"frame: got {frame!r}, expected an integer >= 0")
             
         if f != self.frame:
             self.frame = f

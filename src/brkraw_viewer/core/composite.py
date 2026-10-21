@@ -21,12 +21,12 @@ def transparency_mask(values: Any, rules: Optional[Dict[str, Any]] = None) -> np
         elif key == "range":
             lo, hi = val
             if lo > hi:
-                raise ValueError("range: lo must be <= hi")
+                raise ValueError(f"range: got {val!r}, expected lo <= hi")
             mask |= (v >= lo) & (v <= hi)
         elif key == "values":
             mask |= np.isin(v, val)
         else:
-            raise ValueError(f"unknown rule: {key}")
+            raise ValueError(f"rules: got unknown rule {key!r}, expected a known transparency rule")
 
     return mask
 
@@ -49,10 +49,10 @@ def layer_rgba(
 ) -> Tuple[np.ndarray, np.ndarray]:
     lut_arr = np.asarray(lut, dtype=np.uint8)
     if lut_arr.shape != (256, 3):
-        raise ValueError("lut must have shape (256, 3)")
+        raise ValueError(f"lut: got shape {lut_arr.shape}, expected shape (256, 3)")
     
     if not (0.0 <= alpha <= 1.0):
-        raise ValueError("alpha must be between 0.0 and 1.0")
+        raise ValueError(f"alpha: got {alpha!r}, expected a value between 0.0 and 1.0")
     
     idx = window_to_index(values, vmin, vmax)
     rgb = lut_arr[idx].astype(np.float32)
@@ -72,10 +72,10 @@ def label_rgba(
 ) -> Tuple[np.ndarray, np.ndarray]:
     lab = np.asarray(labels)
     if lab.dtype.kind not in "iu":
-        raise ValueError("labels must be an integer array")
+        raise ValueError(f"labels: got dtype {lab.dtype}, expected an integer array")
     
     if not (0.0 <= alpha <= 1.0):
-        raise ValueError("alpha must be between 0.0 and 1.0")
+        raise ValueError(f"alpha: got {alpha!r}, expected a value between 0.0 and 1.0")
     
     h, w = lab.shape
     rgb = np.zeros((h, w, 3), dtype=np.float32)
@@ -145,7 +145,7 @@ def composite_over(base_rgb: np.ndarray, layers: List[Tuple[np.ndarray, np.ndarr
         a_arr = np.asarray(a, dtype=np.float64)
         
         if rgb_arr.shape != (h, w, 3) or a_arr.shape != (h, w):
-            raise ValueError("shape mismatch in layer")
+            raise ValueError(f"shape: got {rgb_arr.shape} and {a_arr.shape}, expected (h, w, 3) and (h, w) with (h, w) = {(h, w)}")
             
         a3 = a_arr[:, :, np.newaxis]
         out = a3 * rgb_arr + (1.0 - a3) * out

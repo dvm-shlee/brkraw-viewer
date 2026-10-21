@@ -39,8 +39,8 @@ from ..workers.protocol import (
 from brkraw import api as brkapi
 from brkraw.api.types import SubjectType, SubjectPose, AffineSpace
 from brkraw_viewer.utils.orientation import reorient_to_ras, ras_display_affine
-from brkraw_viewer.core.composite import label_rgba, layer_rgba, transparency_mask
-from brkraw_viewer.core.layers import Layer, LayerStack
+from brkraw_viewer.core.composite import label_rgba, layer_rgba, rgb_rgba, transparency_mask
+from brkraw_viewer.core.layers import Layer, LayerError, LayerStack
 from brkraw_viewer.core.resample import Grid, grid_matrix, sample_slice
 from brkraw_viewer.core.window import default_window
 from brkraw.api.types import (
@@ -717,7 +717,22 @@ class ViewerController:
         lid = layer_id or f"layer-{len(self._layers)}"
         while lid in self._layers.ids():
             lid += "+"
-        frames = int(arr.shape[3]) if arr.ndim >= 4 else 1
+        if kind == "rgb":
+            # channel rule: the last axis is colour, never frames
+            if arr.ndim != 4 or arr.shape[3] not in (3, 4):
+                raise ValueError(f"data: got shape {arr.shape}, expected (X, Y, Z, 3) or (X, Y, Z, 4) for kind 'rgb'")
+            if arr.dtype == np.uint8:
+                pass
+            elif arr.dtype.kind == "f":
+                lo, hi = float(np.min(arr)), float(np.max(arr))
+                if not np.all(np.isfinite(arr)) or lo < 0.0 or hi > 1.0:
+                    raise ValueError(f"data: got float values min={lo!r} max={hi!r}, expected finite floats in 0..1 for kind 'rgb'")
+                arr = np.floor(arr.astype(np.float64) * 255.0 + 0.5).astype(np.uint8)
+            else:
+                raise LayerError(f"data: got dtype {arr.dtype}, expected uint8 or float in 0..1 for kind 'rgb'")
+            frames = 1
+        else:
+            frames = int(arr.shape[3]) if arr.ndim >= 4 else 1
         layer = Layer(
             id=lid,
             name=name,
@@ -778,6 +793,18 @@ class ViewerController:
                 continue
             data = self._layer_data.get(layer.id)
             if data is None:
+                continue
+            if layer.kind == "rgb":
+                matrix = grid_matrix(grid, Grid(tuple(data.shape[:3]), layer.affine, layer.space))
+                for plane, axis, index, transpose in (("xy", 2, zi, True), ("xz", 1, yi, True), ("zy", 0, xi, False)):
+                    chans = []
+                    for c in range(data.shape[3]):
+                        ch = sample_slice(
+                            data[:, :, :, c], matrix, grid.shape, axis, index,
+                            interpolation=layer.interpolation, fill=np.nan,
+                        )
+                        chans.append(ch.T if transpose else ch)
+                    out[plane].append(rgb_rgba(np.stack(chans, axis=-1), alpha=layer.alpha))
                 continue
             frame = self._layers.frame_for(layer.id, base_frame)
             vol3d = data[:, :, :, frame] if data.ndim >= 4 else data

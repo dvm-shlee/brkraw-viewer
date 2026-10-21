@@ -106,6 +106,36 @@ def label_rgba(
     return rgb, a
 
 
+def rgb_rgba(
+    values: Any, *, alpha: float = 1.0, visible: bool = True
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Colour and alpha of a sampled RGB(A) plane (h, w, 3 or 4) with values 0..255.
+
+    Mirrors label_rgba: returns (rgb float32 (h, w, 3), a float32 (h, w)). A pixel
+    with a NaN channel (outside the layer) is transparent; the fourth channel, when
+    present, scales the alpha (255 = opaque).
+    """
+    v = np.asarray(values)
+    if v.dtype.kind not in "uif":
+        raise ValueError(f"values: got dtype {v.dtype}, expected an unsigned, signed or float array")
+    if v.ndim != 3 or v.shape[2] not in (3, 4):
+        raise ValueError(f"values: got shape {v.shape}, expected (h, w, 3) or (h, w, 4)")
+    if not (0.0 <= alpha <= 1.0):
+        raise ValueError(f"alpha: got {alpha!r}, expected a value between 0.0 and 1.0")
+
+    v = v.astype(np.float64)
+    missing = np.isnan(v).any(axis=2)
+    rgb = np.clip(np.nan_to_num(v[:, :, :3], nan=0.0), 0.0, 255.0).astype(np.float32)
+    vis_val = alpha * (1.0 if visible else 0.0)
+    if v.shape[2] == 4:
+        chan_a = np.clip(np.nan_to_num(v[:, :, 3], nan=0.0), 0.0, 255.0) / 255.0
+        a = vis_val * chan_a
+    else:
+        a = np.full(v.shape[:2], vis_val)
+    a = np.where(missing, 0.0, a).astype(np.float32)
+    return rgb, a
+
+
 def composite_over(base_rgb: np.ndarray, layers: List[Tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
     out = np.asarray(base_rgb, dtype=np.float64)
     h, w, c = out.shape

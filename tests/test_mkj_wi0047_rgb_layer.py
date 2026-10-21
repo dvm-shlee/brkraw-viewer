@@ -240,3 +240,24 @@ def test_nearest_vs_linear_sampling(ctrl):
 def test_rgb_layer_accepts_arrays_only():
     with pytest.raises(LayerError, match=r"source: got 'scan', expected 'array'"):
         make_layer(source="scan")
+
+
+def test_float_range_error_names_min_and_max(ctrl):
+    arr = np.full((4, 5, 6, 3), 0.5)
+    arr[0, 0, 0, 0] = -0.25
+    arr[1, 1, 1, 1] = 2.0
+    with pytest.raises(ValueError, match=r"data: got float values min=-0\.25 max=2\.0, expected finite floats in 0\.\.1"):
+        ctrl._add_array_layer(arr, ctrl._layers.base.affine, name="bad", kind="rgb")
+    assert len(ctrl._layers) == 1
+
+
+@pytest.mark.parametrize(
+    "alpha, match",
+    [
+        ("x", r"alpha: got 'x', expected 0\.0\.\.1\.0"),
+        (1.5, r"alpha: got 1\.5, expected 0\.0\.\.1\.0"),
+    ],
+)
+def test_layer_alpha_errors_name_got_and_expected(alpha, match):
+    with pytest.raises(LayerError, match=match):
+        make_layer(alpha=alpha)

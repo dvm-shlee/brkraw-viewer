@@ -103,9 +103,9 @@ class Layer:
         try:
             self.alpha = float(self.alpha)
         except (TypeError, ValueError):
-            raise LayerError("alpha")
+            raise LayerError(f"alpha: got {self.alpha!r}, expected 0.0..1.0")
         if not (0.0 <= self.alpha <= 1.0):
-            raise LayerError("alpha")
+            raise LayerError(f"alpha: got {self.alpha!r}, expected 0.0..1.0")
             
         if self.window is not None:
             try:

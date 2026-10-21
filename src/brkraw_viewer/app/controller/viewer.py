@@ -724,8 +724,9 @@ class ViewerController:
             if arr.dtype == np.uint8:
                 pass
             elif arr.dtype.kind == "f":
-                if not np.all(np.isfinite(arr)) or arr.min() < 0.0 or arr.max() > 1.0:
-                    raise ValueError("data: got float values outside 0..1 or not finite, expected finite floats in 0..1 for kind 'rgb'")
+                lo, hi = float(np.min(arr)), float(np.max(arr))
+                if not np.all(np.isfinite(arr)) or lo < 0.0 or hi > 1.0:
+                    raise ValueError(f"data: got float values min={lo!r} max={hi!r}, expected finite floats in 0..1 for kind 'rgb'")
                 arr = np.floor(arr.astype(np.float64) * 255.0 + 0.5).astype(np.uint8)
             else:
                 raise LayerError(f"data: got dtype {arr.dtype}, expected uint8 or float in 0..1 for kind 'rgb'")

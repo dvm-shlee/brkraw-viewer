@@ -117,3 +117,17 @@ def test_composite_messages():
         label_rgba(v, colors={}, alpha=2.0)
     with pytest.raises(ValueError, match=pat("shape")):
         composite.composite_over(np.zeros((3, 3, 3)), [(np.zeros((2, 2, 3)), np.zeros((2, 2)))])
+
+
+def test_layer_dtype_and_channels_messages():
+    with pytest.raises(LayerError, match=r"^dtype: got .*expected"):
+        make("x", kind="rgb", source="array", shape=(4, 5, 6, 3), dtype="int16")
+    with pytest.raises(LayerError, match=r"^channels: got .*expected"):
+        make("x", channels=2)
+
+
+def test_rgb_rgba_values_messages():
+    with pytest.raises(ValueError, match=r"^values: got .*expected"):
+        composite.rgb_rgba(np.zeros((3, 3, 3), dtype=np.complex64))
+    with pytest.raises(ValueError, match=r"^values: got .*expected"):
+        composite.rgb_rgba(np.zeros((3, 3, 5), dtype=np.uint8))

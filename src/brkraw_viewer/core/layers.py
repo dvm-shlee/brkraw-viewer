@@ -235,7 +235,7 @@ class LayerStack:
             if key not in EDITABLE_FIELDS:
                 raise LayerError(f"field: got {key!r}, expected one of {sorted(EDITABLE_FIELDS)}")
             if layer.kind == "rgb" and key in RGB_IGNORED_FIELDS:
-                raise LayerError(f"field: got {key!r}, not editable for kind 'rgb' (colour comes from the channels)")
+                raise LayerError(f"field: got {key!r}, expected a field other than {sorted(RGB_IGNORED_FIELDS)} for kind 'rgb' (colour comes from the channels)")
             
             if key == "alpha":
                 try:

@@ -6,6 +6,7 @@ from typing import Optional
 
 from brkraw_viewer.core.roi import ROI_TOOLS, RoiDrag, plane_axis
 from brkraw_viewer.ui.components.viewport import ViewportCanvas
+from brkraw_viewer.ui.tabs.viewer.paint_tool import PaintTool
 
 
 class ViewerRightPanel(ttk.Frame):
@@ -23,6 +24,7 @@ class ViewerRightPanel(ttk.Frame):
         axis_bar.columnconfigure(1, weight=1)
         axis_bar.columnconfigure(2, weight=1)
         axis_bar.columnconfigure(3, weight=0)
+        axis_bar.columnconfigure(4, weight=0)
 
         def _axis_box(parent: tk.Misc, axis: str, var: tk.IntVar, on_change, column: int):
             pad_x = (0, 6) if column < 2 else (0, 0)
@@ -82,6 +84,10 @@ class ViewerRightPanel(ttk.Frame):
                 command=self._on_roi_tool,
             ).pack(side=tk.LEFT, padx=(0, 2))
 
+        # Paint tool (WI-0053): next to the ROI box; paint and ROI never act at the same time.
+        self._paint = PaintTool(axis_bar, callbacks=callbacks, master=self, on_activate=self._on_paint_tool)
+        self._paint.frame.grid(row=0, column=4, sticky="n", padx=(6, 0), pady=4)
+
         viewer_host = ttk.Frame(self)
         viewer_host.grid(row=1, column=0, sticky="nsew")
         viewer_host.columnconfigure(0, weight=1)
@@ -113,10 +119,11 @@ class ViewerRightPanel(ttk.Frame):
 
         self._views = {"xz": self._xz, "xy": self._xy, "zy": self._zy}
         for plane, vp in self._views.items():
-            vp.bind_canvas("<ButtonPress-1>", lambda e, p=plane: self._on_roi_press(p, e))
-            vp.bind_canvas("<B1-Motion>", lambda e, p=plane: self._on_roi_move(p, e))
-            vp.bind_canvas("<ButtonRelease-1>", lambda e, p=plane: self._on_roi_release(p, e))
-            vp.bind_canvas("<Escape>", lambda _e: self._on_roi_escape())
+            vp.bind_canvas("<ButtonPress-1>", lambda e, p=plane: self._on_tool_press(p, e))
+            vp.bind_canvas("<B1-Motion>", lambda e, p=plane: self._on_tool_move(p, e))
+            vp.bind_canvas("<ButtonRelease-1>", lambda e, p=plane: self._on_tool_release(p, e))
+            vp.bind_canvas("<Escape>", lambda _e: self._on_tool_escape())
+            vp.bind_canvas("<Control-z>", lambda _e: self._paint.undo())
 
         bottom_bar = ttk.Frame(self)
         bottom_bar.grid(row=2, column=0, sticky="ew", pady=(6, 0))
@@ -240,10 +247,53 @@ class ViewerRightPanel(ttk.Frame):
     def _on_roi_tool(self) -> None:
         tool = self._roi_tool_var.get()
         self._roi_drag.set_tool(tool)
-        for vp in self._views.values():
-            vp.set_click_enabled(tool == "off")  # voxel click only while the tool is off
+        if tool != "off" and self._paint.active:
+            self._paint.set_off()  # one tool at a time
+        self._sync_click_enabled()
         if tool == "off":
             self._clear_roi()
+
+    def _on_paint_tool(self) -> None:
+        if self._paint.active and self._roi_tool_var.get() != "off":
+            self._roi_tool_var.set("off")  # one tool at a time
+            self._on_roi_tool()
+        self._sync_click_enabled()
+
+    def _sync_click_enabled(self) -> None:
+        free = self._roi_tool_var.get() == "off" and not self._paint.active
+        for vp in self._views.values():
+            vp.set_click_enabled(free)  # voxel click only while no drawing tool owns the button
+
+    def _on_tool_press(self, plane: str, event) -> None:
+        if not self._paint.active:
+            self._on_roi_press(plane, event)
+            return
+        rc = self._roi_rc(plane, event)
+        if rc is not None and self._paint.press(plane, rc[0], rc[1]):
+            try:
+                self._views[plane]._canvas.focus_set()  # Ctrl+Z and Esc go to this view
+            except Exception:
+                pass
+
+    def _on_tool_move(self, plane: str, event) -> None:
+        if not self._paint.active:
+            self._on_roi_move(plane, event)
+            return
+        rc = self._roi_rc(plane, event)
+        if rc is not None:
+            self._paint.move(plane, rc[0], rc[1])
+
+    def _on_tool_release(self, plane: str, event) -> None:
+        if self._paint.active:
+            self._paint.release()
+        else:
+            self._on_roi_release(plane, event)
+
+    def _on_tool_escape(self) -> None:
+        if self._paint.active:
+            self._paint.cancel()
+        else:
+            self._on_roi_escape()
 
     def _roi_rc(self, plane: str, event):
         return self._views[plane].canvas_to_image(int(event.x), int(event.y))
@@ -449,6 +499,7 @@ class ViewerRightPanel(ttk.Frame):
         layers: dict | None = None,
     ) -> None:
         self._last_indices = indices
+        self._paint.refresh()  # the selected layer or its undo state may have changed
         layers = layers or {}
         if not views:
             self._xz.clear()

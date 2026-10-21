@@ -41,7 +41,9 @@ from brkraw.api.types import SubjectType, SubjectPose, AffineSpace
 from brkraw_viewer.utils.orientation import reorient_to_ras, ras_display_affine
 from brkraw_viewer.core.composite import label_rgba, layer_rgba, rgb_rgba, transparency_mask
 from brkraw_viewer.core.layers import Layer, LayerError, LayerStack
-from brkraw_viewer.core.resample import Grid, grid_matrix, sample_slice
+from brkraw_viewer.core.labelio import save_label_nifti
+from brkraw_viewer.core.painter import LabelEditor
+from brkraw_viewer.core.resample import Grid, grid_matrix, map_indices, sample_slice
 from brkraw_viewer.core.window import default_window
 from brkraw.api.types import (
     SubjectType,
@@ -89,6 +91,12 @@ class ViewerController:
         self._layer_data: dict[str, np.ndarray] = {}
         self._layer_windows: dict[tuple, tuple[float, float]] = {}
         self._layer_label_colors: dict[str, dict[int, tuple[int, int, int]]] = {}
+        # Label painting (WI-0053): one LabelEditor per editable label layer, unsaved layers, the
+        # layer the paint tool acts on, and the stroke in progress.
+        self._layer_editors: dict[str, LabelEditor] = {}
+        self._layer_dirty: set[str] = set()
+        self._selected_layer_id: Optional[str] = None
+        self._paint_stroke: Optional[dict] = None
         self._viewer_res: tuple[float, float, float] = (1.0, 1.0, 1.0)
         self._viewer_fov: Optional[tuple[float, float, float]] = None
         self._viewer_job_id: Optional[str] = None
@@ -751,16 +759,211 @@ class ViewerController:
         self._render_viewer_views()
         return lid
 
-    def _remove_layer(self, layer_id: str) -> None:
+    def _remove_layer(self, layer_id: str) -> bool:
+        """Remove a layer; a layer with unsaved paint edits asks first. Returns False when kept."""
+        if layer_id in self._layer_dirty:
+            from tkinter import messagebox
+
+            name = self._layers.get(layer_id).name
+            if not messagebox.askyesno("Remove label layer", f"'{name}' has unsaved edits. Remove it anyway?"):
+                return False
         self._layers.remove(layer_id)
         self._drop_layer_data(layer_id)
         self._render_viewer_views()
+        return True
 
     def _drop_layer_data(self, layer_id: str) -> None:
         self._layer_data.pop(layer_id, None)
+        self._layer_editors.pop(layer_id, None)
+        self._layer_dirty.discard(layer_id)
+        if self._selected_layer_id == layer_id:
+            self._selected_layer_id = None
+        if self._paint_stroke is not None and self._paint_stroke["layer"] == layer_id:
+            self._paint_stroke = None
         self._layer_label_colors.pop(layer_id, None)
         for key in [k for k in self._layer_windows if k[0] == layer_id]:
             self._layer_windows.pop(key, None)
+
+    # ---- label painting glue (WI-0053): the maths is in core/painter.py, the Tk side in ui ----
+
+    def select_layer(self, layer_id: Optional[str]) -> None:
+        """Choose the layer the paint tool acts on (None clears)."""
+        if layer_id is not None and layer_id not in self._layers.ids():
+            raise ValueError(f"layer_id: got {layer_id!r}, expected one of {self._layers.ids()}")
+        self._selected_layer_id = layer_id
+        self._render_viewer_views()
+
+    def _paint_target(self) -> Optional[tuple[Layer, np.ndarray]]:
+        """The selected layer and its array when it is an editable 3-D integer label layer."""
+        lid = self._selected_layer_id
+        if lid is None or lid not in self._layers.ids():
+            return None
+        layer = self._layers.get(lid)
+        data = self._layer_data.get(lid)
+        if layer.kind != "label" or not layer.editable or data is None:
+            return None
+        if data.ndim != 3 or data.dtype.kind not in "iu":
+            return None
+        return layer, data
+
+    def _paint_editor(self, layer_id: str, data: np.ndarray) -> LabelEditor:
+        editor = self._layer_editors.get(layer_id)
+        if editor is None or editor.data is not data:
+            editor = LabelEditor(data)
+            self._layer_editors[layer_id] = editor
+        return editor
+
+    def viewer_paint_state(self) -> dict:
+        """What the paint box shows: enabled only for an editable label layer."""
+        target = self._paint_target()
+        editor = self._layer_editors.get(target[0].id) if target else None
+        return {
+            "enabled": target is not None,
+            "layer": target[0].id if target else None,
+            "can_undo": bool(editor is not None and editor.can_undo()),
+            "can_save": target is not None,
+            "can_new": self._layers.base is not None,
+            "dirty": bool(target and target[0].id in self._layer_dirty),
+        }
+
+    def _paint_point(self, layer: Layer, data: np.ndarray, plane: str, row: float, col: float):
+        """Display pixel (plane, row, col) -> (axis, index, row, col) in the layer's voxels.
+
+        The render samples the layer at l = M d (M = inv(A_L) A_D, as given to sample_slice);
+        the display index d of the pixel maps to the voxel through the same M.
+        """
+        grid = self._display_grid()
+        if grid is None:
+            return None
+        st = self.state.viewer
+        xi, yi, zi = int(st.x_index), int(st.y_index), int(st.z_index)
+        normal = {"xy": 2, "xz": 1, "zy": 0}.get(plane)
+        if normal is None:
+            raise ValueError(f"plane: got {plane!r}, expected one of ['xy', 'xz', 'zy']")
+        if plane == "xy":
+            d = (col, row, zi)
+        elif plane == "xz":
+            d = (col, yi, row)
+        else:
+            d = (xi, row, col)
+        matrix = grid_matrix(grid, Grid(tuple(data.shape[:3]), layer.affine, layer.space))
+        pos = map_indices(matrix, np.asarray(d, dtype=np.float64))
+        axis = int(np.argmax(np.abs(matrix[:3, normal])))  # layer axis the display slice normal runs along
+        rest = [a for a in range(3) if a != axis]
+        # the renderer's rounding rule (core/resample.py): the painted voxel is the displayed one
+        return (axis, *(int(np.floor(pos[a] + 0.5)) for a in (axis, rest[0], rest[1])))
+
+    def _paint_refresh(self, layer_id: str) -> None:
+        self._layer_label_colors.pop(layer_id, None)  # a new id needs a colour
+        self._render_viewer_views()
+
+    def on_viewer_paint_press(self, plane: str, row: float, col: float, mode: str, brush: int) -> bool:
+        """Begin a stroke on the selected layer at a display pixel; False when no stroke starts."""
+        target = self._paint_target()
+        if target is None:
+            return False
+        if mode not in ("paint", "erase"):
+            raise ValueError(f"mode: got {mode!r}, expected one of ['paint', 'erase']")
+        layer, data = target
+        if self._paint_stroke is not None:
+            self.on_viewer_paint_release()
+        editor = self._paint_editor(layer.id, data)
+        editor.mode = mode
+        editor.set_brush(brush)
+        pt = self._paint_point(layer, data, plane, row, col)
+        if pt is None:
+            return False
+        editor.begin_stroke()
+        self._paint_stroke = {
+            "layer": layer.id,
+            "plane": plane,
+            "slice": pt[:2],
+            "last": pt[2:],
+            "top": editor._undo[-1] if editor._undo else None,
+        }
+        editor.stamp(pt[0], pt[1], pt[2], pt[3])
+        self._paint_refresh(layer.id)
+        return True
+
+    def on_viewer_paint_move(self, plane: str, row: float, col: float) -> None:
+        stroke = self._paint_stroke
+        if stroke is None or stroke["plane"] != plane:
+            return
+        layer = self._layers.get(stroke["layer"])
+        data = self._layer_data[layer.id]
+        pt = self._paint_point(layer, data, plane, row, col)
+        if pt is None:
+            return
+        editor = self._layer_editors[layer.id]
+        if pt[:2] == stroke["slice"]:
+            editor.stroke(pt[0], pt[1], [stroke["last"], pt[2:]])
+        else:  # the mapped slice changed (oblique grid): dab on the slice this point maps to
+            editor.stamp(pt[0], pt[1], pt[2], pt[3])
+            stroke["slice"] = pt[:2]
+        stroke["last"] = pt[2:]
+        self._paint_refresh(layer.id)
+
+    def on_viewer_paint_release(self) -> None:
+        """End the stroke: one undo step; the layer becomes unsaved when voxels changed."""
+        stroke, self._paint_stroke = self._paint_stroke, None
+        if stroke is None:
+            return
+        editor = self._layer_editors[stroke["layer"]]
+        editor.end_stroke()
+        if editor._undo and editor._undo[-1] is not stroke["top"]:
+            self._layer_dirty.add(stroke["layer"])
+        self._paint_refresh(stroke["layer"])
+
+    def on_viewer_paint_cancel(self) -> None:
+        """Esc: drop the stroke in progress, restoring what it changed."""
+        stroke, self._paint_stroke = self._paint_stroke, None
+        if stroke is None:
+            return
+        editor = self._layer_editors[stroke["layer"]]
+        editor.end_stroke()
+        if editor._undo and editor._undo[-1] is not stroke["top"]:
+            editor.undo()
+        self._paint_refresh(stroke["layer"])
+
+    def on_viewer_paint_undo(self) -> bool:
+        target = self._paint_target()
+        if target is None:
+            return False
+        if self._paint_stroke is not None:
+            self.on_viewer_paint_release()
+        editor = self._layer_editors.get(target[0].id)
+        if editor is None or not editor.undo():
+            return False
+        self._layer_dirty.add(target[0].id)
+        self._paint_refresh(target[0].id)
+        return True
+
+    def on_viewer_paint_new_layer(self) -> str:
+        """An empty editable label layer on the shown grid; it becomes the paint target."""
+        grid = self._display_grid()
+        if grid is None:
+            raise ValueError("base: got no shown scan, expected a loaded scan")
+        n = sum(1 for lay in self._layers if lay.kind == "label" and lay.editable) + 1
+        lid = self._add_array_layer(
+            np.zeros(grid.shape, dtype=np.uint8),
+            np.asarray(grid.affine, dtype=float),
+            name=f"Label {n}",
+            kind="label",
+            editable=True,
+        )
+        self._selected_layer_id = lid
+        self._render_viewer_views()
+        return lid
+
+    def on_viewer_paint_save(self, path: Union[str, Path]) -> Path:
+        """Write the selected label layer as .nii.gz; the layer stays editable and is clean."""
+        target = self._paint_target()
+        if target is None:
+            raise ValueError("layer: got no editable label layer selected, expected one")
+        layer, data = target
+        out = save_label_nifti(data, layer.affine, path)
+        self._layer_dirty.discard(layer.id)
+        return out
 
     def _layer_window(self, layer: Layer, frame: int, vol3d: np.ndarray) -> tuple[float, float]:
         if layer.window is not None:

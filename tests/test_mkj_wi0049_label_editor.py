@@ -202,3 +202,28 @@ def test_set_brush_bad_type_message():
     ed = LabelEditor(np.zeros((3, 3, 3), dtype=np.uint8))
     with pytest.raises(ValueError, match="brush_size"):
         ed.set_brush("bad")
+
+
+def test_end_stroke_reports_change_even_beyond_the_undo_cap():
+    ed = LabelEditor(np.zeros((5, 5, 5), dtype=np.uint8), max_undo_bytes=0)
+    ed.begin_stroke()
+    assert ed.end_stroke() is False  # nothing painted
+    ed.begin_stroke()
+    ed.stamp(2, 2, 2, 2)
+    assert ed.end_stroke() is True
+    assert not ed.can_undo()  # dropped by the cap, yet reported
+    assert ed.end_stroke() is False  # no stroke in progress
+
+
+def test_cancel_stroke_restores_beyond_the_undo_cap():
+    data = np.zeros((5, 5, 5), dtype=np.uint8)
+    data[2, 2, 2] = 3
+    ed = LabelEditor(data, max_undo_bytes=0)
+    ed.begin_stroke()
+    ed.label = 1
+    ed.stamp(2, 2, 2, 2)
+    ed.stamp(2, 1, 1, 1)
+    assert ed.cancel_stroke() is True
+    assert data[2, 2, 2] == 3 and int(data.sum()) == 3
+    assert not ed.can_undo()
+    assert ed.cancel_stroke() is False

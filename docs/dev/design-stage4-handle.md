@@ -112,7 +112,7 @@ it is Open question 1.
   (`writeable = False`, so writes raise) valid only until the next dataset, scan, reco, flip or slicepack
   change, because `_viewer_volume` is replaced then (`app/controller/viewer.py:243`).
 - `add_overlay` stores the caller's voxel array by reference today (`np.asarray`, `app/controller/viewer.py:711`,
-  stored at `:746`), but copies the affine: `Layer.__post_init__` runs `np.array(self.affine, dtype=np.float64)`
+  stored at `:750`), but copies the affine: `Layer.__post_init__` runs `np.array(self.affine, dtype=np.float64)`
   (`core/layers.py:64`). Proposed: keep the affine copy as is.
   Proposed: copy on add, so later caller mutations cannot desync the cached windows and label colours
   (`app/controller/viewer.py:750-766`), and count `nbytes` of the stored copy. Memory is the price; a

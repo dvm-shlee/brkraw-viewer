@@ -284,7 +284,7 @@ def test_stroke_changes_data_and_plane_and_ctrl_z_reverts(gui):
     assert alpha.shape == (SHAPE[1], SHAPE[0])
     assert int((alpha > 0).sum()) == painted  # the rendered plane shows exactly the painted voxels
     assert lid in ctrl._layer_dirty
-    assert gui.paint._undo.instate(["!disabled"])
+    assert gui.paint._undo_btn.instate(["!disabled"])
 
     gui.key("<Control-z>")
     assert not data.any() and not gui.plane_alpha().any()
@@ -458,3 +458,27 @@ def test_scaled_grid_paints_the_displayed_voxel(gui):
     gui.release(2, 1)
     data = ctrl._layer_data[lid]
     assert data[1, 2, z] == 1 and data[0, 2, z] == 0 and int(data.sum()) == 1
+
+
+def test_escape_restores_a_stroke_larger_than_the_undo_cap(gui):
+    lid, data = _new_layer(gui)
+    gui.ctrl._paint_editor(lid, data).max_undo_bytes = 0  # every stroke exceeds the cap
+    gui.paint.brush_var.set(1)
+    gui.mode("paint")
+    z = gui.idx()[2]
+    gui.press(10, 10)
+    gui.motion(12, 12)
+    assert data[10, 10, z] == 1 and data[12, 12, z] == 1
+    gui.key("<Escape>")
+    assert not data.any()
+    assert lid not in gui.ctrl._layer_dirty
+
+
+def test_stroke_larger_than_the_undo_cap_marks_the_layer_unsaved(gui):
+    lid, data = _new_layer(gui)
+    gui.ctrl._paint_editor(lid, data).max_undo_bytes = 0
+    gui.paint.brush_var.set(1)
+    gui.mode("paint")
+    gui.stroke((5, 4), (12, 14))
+    assert data.any()
+    assert lid in gui.ctrl._layer_dirty

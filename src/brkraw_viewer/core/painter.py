@@ -193,10 +193,15 @@ class LabelEditor:
         if self._active is None:
             self._active = []
 
-    def end_stroke(self) -> None:
+    def end_stroke(self) -> bool:
+        """Close the stroke in progress; True when it changed any voxel.
+
+        The result does not depend on the undo cap: a stroke larger than the cap
+        still reports True although it can no longer be undone.
+        """
         parts, self._active = self._active, None
         if not parts:
-            return
+            return False
         flat = np.concatenate([p[0] for p in parts])
         old = np.concatenate([p[1] for p in parts])
         flat, first = np.unique(flat, return_index=True)  # keep earliest old value per voxel
@@ -206,6 +211,20 @@ class LabelEditor:
         while self._undo and self._undo_bytes > self.max_undo_bytes:
             f, o = self._undo.pop(0)
             self._undo_bytes -= f.nbytes + o.nbytes
+        return True
+
+    def cancel_stroke(self) -> bool:
+        """Drop the stroke in progress, restoring its voxels from its own record.
+
+        Works whatever max_undo_bytes is; nothing is added to the undo history.
+        True when the stroke had changed any voxel.
+        """
+        parts, self._active = self._active, None
+        if not parts:
+            return False
+        for flat, old in reversed(parts):
+            self.data[np.unravel_index(flat, self.data.shape)] = old
+        return True
 
     def undo(self) -> bool:
         if self._active is not None:

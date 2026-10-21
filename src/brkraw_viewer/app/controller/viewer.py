@@ -879,7 +879,6 @@ class ViewerController:
             "plane": plane,
             "slice": pt[:2],
             "last": pt[2:],
-            "top": editor._undo[-1] if editor._undo else None,
         }
         editor.stamp(pt[0], pt[1], pt[2], pt[3])
         self._paint_refresh(layer.id)
@@ -909,8 +908,7 @@ class ViewerController:
         if stroke is None:
             return
         editor = self._layer_editors[stroke["layer"]]
-        editor.end_stroke()
-        if editor._undo and editor._undo[-1] is not stroke["top"]:
+        if editor.end_stroke():
             self._layer_dirty.add(stroke["layer"])
         self._paint_refresh(stroke["layer"])
 
@@ -920,9 +918,7 @@ class ViewerController:
         if stroke is None:
             return
         editor = self._layer_editors[stroke["layer"]]
-        editor.end_stroke()
-        if editor._undo and editor._undo[-1] is not stroke["top"]:
-            editor.undo()
+        editor.cancel_stroke()
         self._paint_refresh(stroke["layer"])
 
     def on_viewer_paint_undo(self) -> bool:

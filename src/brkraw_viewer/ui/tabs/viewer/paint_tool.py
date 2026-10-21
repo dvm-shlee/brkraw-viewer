@@ -39,8 +39,8 @@ class PaintTool:
         ttk.Label(self.frame, text="Brush").pack(side=tk.LEFT, padx=(6, 2))
         self._brush = ttk.Spinbox(self.frame, from_=1, to=99, width=3, textvariable=self.brush_var)
         self._brush.pack(side=tk.LEFT)
-        self._undo = ttk.Button(self.frame, text="Undo", command=self.undo, width=5)
-        self._undo.pack(side=tk.LEFT, padx=(6, 2))
+        self._undo_btn = ttk.Button(self.frame, text="Undo", command=self.undo, width=5)
+        self._undo_btn.pack(side=tk.LEFT, padx=(6, 2))
         self._new = ttk.Button(self.frame, text="New label layer", command=self.new_layer)
         self._new.pack(side=tk.LEFT, padx=(2, 2))
         self._save = ttk.Button(self.frame, text="Save label...", command=self.save)
@@ -79,7 +79,7 @@ class PaintTool:
         for mode in ("paint", "erase"):
             self._radios[mode].configure(state="normal" if enabled else "disabled")
         self._brush.configure(state="normal" if enabled else "disabled")
-        self._undo.configure(state="normal" if state.get("can_undo") else "disabled")
+        self._undo_btn.configure(state="normal" if state.get("can_undo") else "disabled")
         self._save.configure(state="normal" if state.get("can_save") else "disabled")
         self._new.configure(state="normal" if state.get("can_new") else "disabled")
 

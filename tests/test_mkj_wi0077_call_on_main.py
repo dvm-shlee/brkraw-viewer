@@ -144,7 +144,9 @@ def test_no_window_from_worker_thread(monkeypatch, tmp_path):
 
 
 # --- race tests (WI-0079): run-or-cancel and admission decided under _main_lock (headless, no Tk) ---
-from test_core_layers_in_viewer import ctrl  # noqa: F401,E402  (fixture: controller with the _View fake view)
+import numpy as np  # noqa: E402
+
+from test_core_layers_in_viewer import _View, ctrl, load  # noqa: F401,E402  (fake view, fixture, load helper)
 
 
 class _GatedQueue:
@@ -178,11 +180,13 @@ def test_admission_race_close_during_put_gives_runtime_error(ctrl, monkeypatch):
     time.sleep(0.2)  # on_close waits for the lock held across the put
     gate.set()
     w.thread.join(1.0)
+    assert w.done()  # the 1 s guarantee, checked right after the one-second join
     closer.join(2.0)
-    assert w.done() and not closer.is_alive()
+    assert not closer.is_alive()
+    assert isinstance(ctrl._view, _View)
     assert isinstance(w.error, RuntimeError)
     assert "app: got" in str(w.error) and "expected" in str(w.error)
-    assert w.elapsed < 1.5
+    assert w.elapsed < 1.0
 
 
 def test_started_then_timeout_waits_for_the_result(ctrl):  # noqa: F811
@@ -191,6 +195,7 @@ def test_started_then_timeout_waits_for_the_result(ctrl):  # noqa: F811
     def fn():
         started_evt.set()
         release_evt.wait(5.0)
+        load(ctrl, np.arange(24, dtype=float).reshape(2, 3, 4))
         return "done"
 
     w = _Worker(lambda: ctrl.call_on_main(fn, timeout=0.3))
@@ -207,6 +212,7 @@ def test_started_then_timeout_waits_for_the_result(ctrl):  # noqa: F811
     assert w.done() and not drainer.is_alive()
     assert w.error is None
     assert w.result == "done"
+    assert ctrl._view.calls
 
 
 def test_not_started_then_timeout_is_cancelled_and_never_run(ctrl):  # noqa: F811

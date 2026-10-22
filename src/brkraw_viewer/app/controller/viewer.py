@@ -64,6 +64,7 @@ class ViewerController:
         self._view: Optional[ViewerView] = None
         self._main_calls: queue.SimpleQueue = queue.SimpleQueue()
         self._main_closed = False
+        self._main_lock = threading.Lock()
         cfg = load_viewer_config()
         self.state.settings.worker_popup = bool(cfg.get("worker", {}).get("popup", True))
         self._worker = WorkerManager(
@@ -171,12 +172,13 @@ class ViewerController:
             raise ValueError(f"timeout: got {timeout!r}, expected a number > 0 (seconds)")
         if threading.current_thread() is threading.main_thread():
             return fn()
-        if self._main_closed:
-            raise RuntimeError("app: got a closed viewer, expected a running viewer")
-        if self._view is None:
-            raise RuntimeError("app: got no window, expected a viewer window (attach_view first)")
         record = SimpleNamespace(fn=fn, event=threading.Event(), result=None, error=None, cancelled=False)
-        self._main_calls.put(record)
+        with self._main_lock:
+            if self._main_closed:
+                raise RuntimeError("app: got a closed viewer, expected a running viewer")
+            if self._view is None:
+                raise RuntimeError("app: got no window, expected a viewer window (attach_view first)")
+            self._main_calls.put(record)
         if not record.event.wait(timeout):
             record.cancelled = True
             if not record.event.is_set():
@@ -2131,8 +2133,9 @@ class ViewerController:
             self._view.set_status("Refreshed.")
 
     def on_close(self) -> None:
-        self._main_closed = True
-        self._release_main_calls()
+        with self._main_lock:
+            self._main_closed = True
+            self._release_main_calls()
         self._check_disk_cache_on_exit()
 
     def _check_disk_cache_on_exit(self) -> None:

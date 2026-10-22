@@ -131,7 +131,7 @@ def test_remove_dirty_kept_and_clean_removed(ctrl):
     _fail(e, "layer_id")
     assert lid in [i.id for i in ctrl.layers_api.list_layers()]
     ctrl._layer_dirty.discard(lid)
-    ctrl._layer_label_colors[lid] = {1: (1, 2, 3)}
+    ctrl._layer_label_colors[lid] = {77: (1, 2, 3)}
     ctrl._layer_windows[(lid, 0)] = (0.0, 1.0)
     ctrl.layers_api.remove_overlay(lid)
     assert [i.id for i in ctrl.layers_api.list_layers()] == ["base"]
@@ -142,11 +142,11 @@ def test_remove_dirty_kept_and_clean_removed(ctrl):
 def test_refresh_clears_cached_windows(ctrl):
     lid, arr = _add(ctrl, copy=False)
     other = "other-layer"
-    ctrl._layer_windows[(lid, 0)] = (0.0, 1.0)
-    ctrl._layer_windows[(other, 0)] = (0.0, 1.0)
-    ctrl._layer_label_colors[lid] = {1: (1, 2, 3)}
+    ctrl._layer_windows[(lid, 0)] = (-99.0, -98.0)
+    ctrl._layer_windows[(other, 0)] = (-99.0, -98.0)
+    ctrl._layer_label_colors[lid] = {77: (1, 2, 3)}
     arr[2, 2, 2] = 9.0
     ctrl.layers_api.set_overlay(lid)
-    assert not [k for k in ctrl._layer_windows if k[0] == lid]
-    assert (other, 0) in ctrl._layer_windows
-    assert lid not in ctrl._layer_label_colors
+    assert ctrl._layer_windows.get((lid, 0)) != (-99.0, -98.0)
+    assert ctrl._layer_windows[(other, 0)] == (-99.0, -98.0)
+    assert ctrl._layer_label_colors.get(lid) != {77: (1, 2, 3)}

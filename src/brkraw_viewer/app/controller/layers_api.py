@@ -84,8 +84,6 @@ class LayersAPI:
     def remove_overlay(self, layer_id: str) -> None:
         _main_thread()
         if layer_id in self._ctl._layer_dirty:
-            raise ValueError(
-                f"layer_id: got {layer_id!r}, expected a layer without unsaved paint edits (save or discard them first)"
-            )
+            raise ValueError(f"layer_id: got {layer_id!r}, expected a layer without unsaved paint edits (save or discard them first)")
         self._handle.remove_overlay(layer_id)
         self._ctl._drop_layer_data(layer_id)

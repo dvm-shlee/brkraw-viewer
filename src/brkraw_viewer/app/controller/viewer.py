@@ -633,6 +633,16 @@ class ViewerController:
                 self._viewer_windows[key] = window
         return window
 
+    @property
+    def layers_api(self):
+        """The stage-4 layer handle bound to this controller (provisional, main thread only)."""
+        api = getattr(self, "_layers_api", None)
+        if api is None:
+            from .layers_api import LayersAPI
+
+            api = self._layers_api = LayersAPI(self)
+        return api
+
     # ---- layer core C1-C4 (WI-0072) --------------------------------------------------------
 
     def _display_grid(self) -> Optional[Grid]:

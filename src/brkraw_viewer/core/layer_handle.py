@@ -1,9 +1,11 @@
 """Tk-free layer handle over LayerStack and the layer data dict (WI-0067, stage 4 item 1).
 
 Implements the note design-stage4-handle.md (Surface, Errors, Copy vs view). Director
-answers (office#31): Q2 add_overlay always copies; Q4 a separate handle object; Q5 an
-overlay in another space or grid is refused, never resampled. The main-thread guard is
-a later item and is not here. Layer construction mirrors the controller's
+answers (office#23): Q2 B add_overlay copies by default (copy=True) and can hold the
+caller's array (copy=False); Q3 B get_overlay_array returns a copy or a read-only view;
+Q4 A a separate handle object; Q5 A an overlay in another space or grid is refused,
+never resampled. The API is provisional until tested. The main-thread guard is a later
+item and is not here. Layer construction mirrors the controller's
 ``_add_array_layer`` without importing it.
 """
 from __future__ import annotations
@@ -36,6 +38,11 @@ class LayerInfo:
     cmap: str
 
 
+def _check_copy(copy: Any) -> None:
+    if not isinstance(copy, bool):
+        raise ValueError(f"copy: got {copy!r}, expected True or False")
+
+
 class LayerHandle:
     """Add, change, remove and list overlay layers; the base layer is read-only."""
 
@@ -60,7 +67,18 @@ class LayerHandle:
         ]
 
     def add_overlay(self, data, affine, *, name: str, kind: str = "image", editable: bool = False,
-                    layer_id: Optional[str] = None, **fields: Any) -> str:
+                    layer_id: Optional[str] = None, copy: bool = True, space: Optional[str] = None,
+                    **fields: Any) -> str:
+        """Add an overlay layer and return its id.
+
+        Ownership: with copy=True the handle owns its own copy; with copy=False the caller keeps
+        ownership and the handle holds a reference to the caller's numpy.ndarray (no conversion).
+        Lifetime: the stored array lives until remove_overlay or the layer is dropped.
+        Mutation: a copy=False array is mutated only on the Tk main thread, followed by
+        set_overlay(layer_id) with no fields to refresh; cached windows and label colours are
+        recomputed only then. space None means the base layer's space; another value is refused.
+        """
+        _check_copy(copy)
         if kind not in HANDLE_KINDS:
             raise ValueError(f"kind: got {kind!r}, expected one of {list(HANDLE_KINDS)}")
         if editable and kind != "label":
@@ -68,12 +86,19 @@ class LayerHandle:
         for key in fields:
             if key not in EDITABLE_FIELDS:
                 raise ValueError(f"field: got {key!r}, expected one of {sorted(EDITABLE_FIELDS)}")
-        arr = np.array(data, copy=True)  # Q2: always a copy
+        if copy:
+            arr = np.array(data, copy=True)
+        else:
+            if not isinstance(data, np.ndarray):
+                raise ValueError(f"data: got {type(data).__name__}, expected a numpy.ndarray when copy=False")
+            arr = data
         if arr.ndim < 3:
             raise ValueError(f"data: got shape {arr.shape}, expected at least 3 dimensions")
         base = self._stack.base
         if base is None:
             raise ValueError("image: got no loaded scan, expected a loaded scan (open a dataset and select a scan first)")
+        if space is not None and space != base.space:
+            raise ValueError(f"space: got {space!r}, expected {base.space!r} (the base layer's space)")
         try:
             aff = np.array(affine, dtype=np.float64, copy=True)
         except (TypeError, ValueError) as exc:
@@ -102,6 +127,17 @@ class LayerHandle:
             raise ValueError(f"layer_id: got {layer_id!r}, expected an overlay id from list_layers()")
         if self._stack.base is not None and layer_id == self._stack.base.id:
             raise ValueError(f"layer_id: got {layer_id!r}, expected an overlay id (the base layer is read-only)")
+
+    def get_overlay_array(self, layer_id: str, copy: bool = True) -> np.ndarray:
+        """Return an overlay's voxel array: a new copy, or (copy=False) a read-only view."""
+        self._overlay_id(layer_id)
+        _check_copy(copy)
+        arr = self._data[layer_id]
+        if copy:
+            return np.array(arr, copy=True)
+        view = arr.view()
+        view.flags.writeable = False
+        return view
 
     def set_overlay(self, layer_id: str, **fields: Any) -> None:
         self._overlay_id(layer_id)

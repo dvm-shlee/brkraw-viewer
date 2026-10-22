@@ -165,6 +165,8 @@ class ViewerController:
         from the calling thread); fn's own exception is re-raised to the caller. A closed viewer
         or a missing window raises RuntimeError; no answer within ``timeout`` raises TimeoutError
         and the call is cancelled (never run later). Closing the viewer releases waiters at once.
+        A call that has started on the main thread is waited for; only a call not yet started is
+        cancelled on timeout.
         """
         if not callable(fn):
             raise ValueError(f"fn: got {fn!r}, expected a callable")
@@ -172,7 +174,7 @@ class ViewerController:
             raise ValueError(f"timeout: got {timeout!r}, expected a number > 0 (seconds)")
         if threading.current_thread() is threading.main_thread():
             return fn()
-        record = SimpleNamespace(fn=fn, event=threading.Event(), result=None, error=None, cancelled=False)
+        record = SimpleNamespace(fn=fn, event=threading.Event(), result=None, error=None, cancelled=False, started=False)
         with self._main_lock:
             if self._main_closed:
                 raise RuntimeError("app: got a closed viewer, expected a running viewer")
@@ -180,11 +182,13 @@ class ViewerController:
                 raise RuntimeError("app: got no window, expected a viewer window (attach_view first)")
             self._main_calls.put(record)
         if not record.event.wait(timeout):
-            record.cancelled = True
-            if not record.event.is_set():
-                raise TimeoutError(
-                    f"timeout: got no answer after {timeout:g} s, expected the main thread to run fn within the timeout"
-                )
+            with self._main_lock:
+                if not record.started and not record.event.is_set():
+                    record.cancelled = True
+                    raise TimeoutError(
+                        f"timeout: got no answer after {timeout:g} s, expected the main thread to run fn within the timeout"
+                    )
+            record.event.wait()
         if record.error is not None:
             raise record.error
         return record.result
@@ -195,8 +199,10 @@ class ViewerController:
                 record = self._main_calls.get_nowait()
             except queue.Empty:
                 return
-            if record.cancelled:
-                continue
+            with self._main_lock:
+                if record.cancelled:
+                    continue
+                record.started = True
             try:
                 record.result = record.fn()
             except Exception as exc:

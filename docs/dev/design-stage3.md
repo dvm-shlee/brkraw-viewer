@@ -4,6 +4,12 @@ Status: draft for the Director's review (office#22, first step). No code is chan
 Every statement about the code is marked **observed** (with file:line, paths relative to
 `src/brkraw_viewer/`) or **proposed**.
 
+## Status
+
+Landed on `main`: WI-A (RGB layer kind, WI-0047), WI-B (`LabelEditor` and `save_label_nifti`, WI-0049),
+WI-C (controller glue and `paint_tool.py`, WI-0053, completed by WI-0055). WI-D (docs) is WI-0057. The answers
+to the open questions below were the recommended options (provisional).
+
 ## Goal
 
 - Add a layer kind `"rgb"` (display only): an array whose last axis holds colour channels is drawn as

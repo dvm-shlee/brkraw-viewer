@@ -73,6 +73,50 @@ by extensions; they are not a versioned API:
   Only one ROI exists and it is never saved. It is cleared when the dataset, scan,
   reco, converter hook or its options, slicepack, flip or the shown slice on its
   axis changes; an answer for an earlier ROI or state is dropped.
+- Layers (**provisional**, office#23; may change until its tests have run in real use):
+  - `app.layers_api.list_layers()`: list of read-only `LayerInfo` (`id`, `name`, `kind`,
+    `source`, `space`, `shape`, `affine`, `dtype`, `frames`, `visible`, `alpha`, `cmap`),
+    the base layer first. No voxel data.
+  - `app.layers_api.get_image(copy=True)`: `(array, affine)` of the shown scan. With
+    `copy=False` the array is a read-only view.
+  - `app.layers_api.add_overlay(data, affine, *, name, kind="image", editable=False, layer_id=None, copy=True, space=None, **fields)`:
+    adds an overlay and returns its id (`str`). `kind` is one of the handle kinds
+    (for example `"image"` or `"label"`); `editable=True` needs `kind="label"`; `space=None`
+    means the shown scan's space; `**fields` are display fields such as `alpha`, `cmap`,
+    `visible`, `window`.
+  - `app.layers_api.set_overlay(layer_id, **fields)`: change display fields; returns `None`.
+    With no fields it refreshes the view after you mutated a `copy=False` array.
+  - `app.layers_api.get_overlay_array(layer_id, copy=True)`: the overlay's voxel array
+    (`numpy.ndarray`); `copy=False` gives a read-only view.
+  - `app.layers_api.remove_overlay(layer_id)`: remove an overlay; returns `None`.
+  - `app.call_on_main(fn, timeout=5.0)`: run `fn()` on the Tk main thread and return its
+    result. On the main thread it runs at once; from another thread it is queued, `fn`'s
+    exception is re-raised to the caller, and `TimeoutError` follows if no answer comes
+    within `timeout` seconds (the call is then cancelled).
+
+  Rules:
+  - Main thread only: every `layers_api` method raises `RuntimeError` from another thread.
+    From a worker thread wrap the call in `call_on_main`.
+  - Copies: `copy=True` means the handle owns its own copy. `copy=False` holds the caller's
+    array (a `numpy.ndarray`); mutate it on the main thread, then call `set_overlay(layer_id)`
+    with no fields to refresh. Views are read-only.
+  - An overlay must match the shown scan's space, shape and affine; otherwise `ValueError`.
+    Nothing is resampled.
+  - Lifecycle: overlays in the same space are kept when the scan or display grid changes;
+    overlays in another space are dropped and their ids are then unknown.
+  - Out of scope: registration or resampling, and voxel editing through the handle.
+  - Errors read `<field>: got ..., expected ...` (for example `shape: got ..., expected ...`).
+
+```python
+# example: layers_api
+img, affine = app.layers_api.get_image()
+mask = (img > img.mean()).astype(np.uint8)
+layer_id = app.layers_api.add_overlay(mask, affine, name="mask", kind="label")
+names = [info.name for info in app.layers_api.list_layers()]  # base first, then "mask"
+back = app.layers_api.get_overlay_array(layer_id)  # a copy equal to mask
+app.layers_api.set_overlay(layer_id, alpha=0.5)
+app.layers_api.remove_overlay(layer_id)
+```
 
 Hooks are loaded when the Extensions tab is built, and the panel is built again
 when you select it from the list or re-attach the tab. The selection is

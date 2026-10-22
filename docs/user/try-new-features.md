@@ -133,3 +133,20 @@ EN: The pip install does not ship `docs/STYLE.md`; read it in the repository at 
 
 - 기대 결과 / Expected: KO: Tests(`tests/test_mkj_wiNNNN_<topic>.py`), Layout(Tk 무관 로직은 `core/`, 얇은 Tk 바인딩은 `ui/`), Docstrings(WI와 계약 id 인용), Errors 절이 있습니다. EN: sections Tests, Layout, Docstrings, Errors as listed.
 - 실패 시 / On failure: KO: 파일이 `main`에 없다면 알려 주세요. EN: if the file is missing on `main`, report it.
+
+## 8. 라벨 페인팅 / Label painting
+
+KO: 데이터를 연 상태에서 Viewer 탭의 **Paint** 상자를 사용합니다. 자세한 설명은 `docs/user/viewer.md`("Label painting").
+EN: With a scan open, use the **Paint** box in the Viewer tab; details in `docs/user/viewer.md` ("Label painting").
+
+1. KO: 라벨 레이어가 없는 동안 **Paint/Erase**와 **Brush**가 비활성인지 확인합니다. EN: while no label layer exists, **Paint**/**Erase** and **Brush** are disabled.
+2. KO: **New label layer**를 누릅니다. EN: press **New label layer**.
+3. KO: **Paint**를 고르고 **Brush**를 5로 설정한 뒤 뷰에서 드래그합니다. 십자선은 움직이지 않습니다. EN: choose **Paint**, set **Brush** to 5, drag in a view; the crosshair does not move.
+4. KO: 두 번째 획을 그린 뒤 **Undo**(또는 뷰에서 **Ctrl+Z**)를 누릅니다. EN: draw a second stroke, then press **Undo** (or **Ctrl+Z** over a view).
+5. KO: **Erase**를 고르고 칠한 부분 위를 드래그합니다. EN: choose **Erase** and drag over painted voxels.
+6. KO: 칠하는 드래그 중에 **Esc**를 누릅니다. EN: press **Esc** during a paint drag.
+7. KO: **ROI** 버튼 중 **Square**를 누릅니다. EN: press **Square** among the **ROI** buttons.
+8. KO: **Save label...**로 `label.nii.gz`를 저장합니다. EN: press **Save label...** and save `label.nii.gz`.
+
+- 기대 결과 / Expected: KO: 3) 칠한 부분이 뷰에 겹쳐 보입니다. 4) 마지막 획만 사라집니다. 5) 칠한 부분이 지워집니다. 6) 진행 중이던 획이 사라지고 이전 획은 남습니다. 7) Paint가 Off로 바뀝니다. 8) `.nii.gz` 파일이 생기고 같은 스캔의 격자와 맞습니다(값은 0과 1). EN: 3) the paint shows over the views; 4) only the last stroke disappears; 5) painted voxels are erased; 6) the stroke in progress vanishes, earlier strokes stay; 7) Paint switches to Off; 8) a `.nii.gz` file is written on the same grid as the scan (values 0 and 1).
+- 실패 시 / On failure: KO: 버튼 연결은 `src/brkraw_viewer/ui/tabs/viewer/paint_tool.py`, 획과 undo는 `src/brkraw_viewer/core/painter.py`, 저장은 `src/brkraw_viewer/core/labelio.py`, 컨트롤러 연결은 `app/controller/viewer.py`(`on_viewer_paint_press`)를 보세요. 오류 창이 뜨면 메시지를 확인하세요. EN: buttons in `paint_tool.py`, strokes and undo in `core/painter.py`, saving in `core/labelio.py`, controller glue in `on_viewer_paint_press` of `app/controller/viewer.py`; an error dialog shows the message.

@@ -96,6 +96,36 @@ reconstruction, hook or hook options, slicepack or flip. Changing the frame does
 A drag that is only a click sets nothing. Values that are not finite are left out of the mean.
 Python access is described under [Viewer hooks](../dev/hooks.md) (provisional).
 
+## Label painting
+
+The **Paint** box next to the ROI buttons paints voxels of a label layer in the three views.
+**Off** / **Paint** / **Erase** and **Brush** are enabled only when an editable label layer is selected;
+**Undo** and **Save** follow their own state; **New label layer** is enabled once a scan is loaded.
+
+1. Press **New label layer**. It adds an empty label layer ("Label 1", "Label 2", ...) on the
+   shown scan's grid and selects it. It needs a loaded scan.
+2. Choose **Paint** or **Erase** (**Off** is the default). While a tool is on, clicking a view
+   does not move the crosshair, and the ROI tool is switched off (one tool at a time; choosing a
+   ROI shape switches painting off).
+3. Set the **Brush** size (1 to 99): it is the diameter in voxels of a disc, in the slice shown
+   in that view. Press in a view and drag. **Paint** writes label 1 and **Erase** writes 0.
+   Points outside the volume are ignored.
+4. Release the button: the stroke is one undo step.
+
+Undo and cancel:
+
+- **Undo** (or **Ctrl+Z** with focus on a view; a press in a view gives it focus) reverts the last
+  finished stroke. The undo history is kept in memory up to 64 MiB; the oldest steps drop first.
+- **Esc** (with focus on a view) cancels the stroke in progress and restores the voxels it changed.
+  It is not an undo step.
+
+Saving: **Save label...** asks for a file name and writes the layer as `.nii.gz` (the extension is
+added when missing) with the layer's affine; the data type is uint8, or uint16 when a label is
+above 255. The layer stays editable. A painted layer lives in memory only until you save it; there is
+no autosave. When a layer with unsaved edits is removed through the controller, a confirmation
+asks first ("... has unsaved edits. Remove it anyway?"); the Viewer tab has no layer list yet, so
+there is no remove button.
+
 ## Registry
 
 Open the registry window from the toolbar to browse registered datasets, add or
@@ -106,9 +136,10 @@ open. The `+` menu can also add a study folder or an archive file.
 ## Known limitations
 
 - One image volume is shown at a time. The layer core (grids, resampling, layer
-  composition, ROI statistics) exists in `brkraw_viewer.core`, but the Viewer tab has
-  no controls for extra layers yet and only the temporary 2D ROI timecourse above;
-  label editing is planned.
+  composition, ROI statistics) exists in `brkraw_viewer.core`. The Viewer tab has the
+  temporary 2D ROI timecourse above and [Label painting](#label-painting), but no layer list
+  yet. Painting always uses label id 1 (no label id choice), and a fast diagonal drag on an
+  oblique layer grid can leave gaps (no gap filling there).
 - Brightness is one range per frame as described under [Views](#views); there is no
   window/level control yet.
 - Extensions cannot draw on the Viewer tab; they add a panel in the Extensions tab.

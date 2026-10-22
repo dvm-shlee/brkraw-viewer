@@ -23,40 +23,40 @@ Observed from the code.
 
 - `Layer` is a dataclass with `id, name, kind, source, space, shape, affine, dtype, frames, frame_policy,
   fixed_frame, visible, alpha, cmap, window, transparency, interpolation, editable, nbytes`
-  (`core/layers.py:19-38`). Kinds are `image`, `label` only; sources `scan/array/file`
-  (`core/layers.py:7-8`). It holds no voxel data.
+  (`core/layers.py:20-41`). Kinds are `image`, `label` only; sources `scan/array/file`
+  (`core/layers.py:7-10`). It holds no voxel data.
 - `LayerStack` offers `ids()`, `get(id)`, `index(id)`, `base`, `add`, `remove`, `move`, `update`, `subscribe`
-  (`core/layers.py:127-159`, `core/layers.py:159`, `core/layers.py:183`, `core/layers.py:192`,
-  `core/layers.py:206`). Errors are `LayerError` (a `ValueError`) whose message is a bare word such as
-  `"unknown"`, `"duplicate"`, `"base"`, `"space: a vs b"` (`core/layers.py:15`, `core/layers.py:147`,
-  `core/layers.py:161-166`, `core/layers.py:186`). Removing layer 0 while others exist is refused
-  (`core/layers.py:184-186`). Editable fields are `name, visible, alpha, cmap, window, transparency,
-  interpolation, frame_policy, fixed_frame` (`core/layers.py:13`).
+  (`core/layers.py:139-182`, `core/layers.py:182`, `core/layers.py:206`, `core/layers.py:215`,
+  `core/layers.py:229`). Errors are `LayerError` (a `ValueError`) whose message is a bare word such as
+  `"unknown"`, `"duplicate"`, `"base"`, `"space: a vs b"` (`core/layers.py:17`, `core/layers.py:170`,
+  `core/layers.py:183-188`, `core/layers.py:209`). Removing layer 0 while others exist is refused
+  (`core/layers.py:207-209`). Editable fields are `name, visible, alpha, cmap, window, transparency,
+  interpolation, frame_policy, fixed_frame` (`core/layers.py:15`).
 - The controller owns `self._layers = LayerStack()` and voxel data in `self._layer_data`
-  (`app/controller/viewer.py:88-89`). The base layer (id `"base"`, source `scan`) is rebuilt by
+  (`app/controller/viewer.py:90-91`). The base layer (id `"base"`, source `scan`) is rebuilt by
   `_sync_base_layer` whenever the display grid changes, and layers in another space are dropped with a status
-  message (`app/controller/viewer.py:654-693`).
+  message (`app/controller/viewer.py:662-701`).
 - `_add_array_layer(data, affine, *, name, kind="image", space=None, layer_id=None, **fields)` exists but is
   private ("the stage-4 Python handle will offer it"); it uses `np.asarray` (no copy for an ndarray), requires
   ndim >= 3 and a loaded scan, derives `frames` from a 4th dim, auto-names ids `layer-N`, stores the array and
-  calls `_render_viewer_views` (`app/controller/viewer.py:695-737`). `_remove_layer(id)` removes the layer and its
-  cached data, windows and label colours (`app/controller/viewer.py:739-748`).
-- Layer rendering samples only the shown slices (`_layer_planes`, `app/controller/viewer.py:768-812`); drawing
-  runs `_display_grid` then `_sync_base_layer` (`app/controller/viewer.py:934-941`).
-- The current image: `self._viewer_volume` is the RAS-reoriented volume (`app/controller/viewer.py:77`,
-  `app/controller/viewer.py:243`), produced by `_reorient_viewer_volume` from the raw volume and raw affine
-  (`app/controller/viewer.py:2833-2852`, the reorient call at `:2847`). `_display_grid()` (def at `:630`) returns a
-  `Grid(shape, affine, space)` (`app/controller/viewer.py:650`, `core/resample.py:29`). There is no public accessor for either today.
-- Provisional ROI API on the controller: `set_roi` (`app/controller/viewer.py:1136`), `clear_roi`
-  (`app/controller/viewer.py:1180`), `roi_timecourse(wait=False, timeout=None)` (`app/controller/viewer.py:1187`).
-  It raises `ValueError` with the offending value (`app/controller/viewer.py:1153-1164`) and `docs/dev/hooks.md:49`
+  calls `_render_viewer_views` (`app/controller/viewer.py:703-760`). `_remove_layer(id)` removes the layer and its
+  cached data, windows and label colours (`app/controller/viewer.py:762-773`).
+- Layer rendering samples only the shown slices (`_layer_planes`, `app/controller/viewer.py:982-1039`); drawing
+  runs `_display_grid` then `_sync_base_layer` (`app/controller/viewer.py:1163-1170`).
+- The current image: `self._viewer_volume` is the RAS-reoriented volume (`app/controller/viewer.py:79`,
+  `app/controller/viewer.py:251`), produced by `_reorient_viewer_volume` from the raw volume and raw affine
+  (`app/controller/viewer.py:3032-3051`, the reorient call at `:2847`). `_display_grid()` (def at `:630`) returns a
+  `Grid(shape, affine, space)` (`app/controller/viewer.py:658`, `core/resample.py:30`). There is no public accessor for either today.
+- Provisional ROI API on the controller: `set_roi` (`app/controller/viewer.py:1362`), `clear_roi`
+  (`app/controller/viewer.py:1406`), `roi_timecourse(wait=False, timeout=None)` (`app/controller/viewer.py:1413`).
+  It raises `ValueError` with the offending value (`app/controller/viewer.py:1381-1392`) and `docs/dev/hooks.md:49`
   states that the stage-4 handle is separate. `roi_timecourse(wait=True)` stays on the Tk main thread and pumps
-  events through `_pump_events` (`app/controller/viewer.py:1214-1217`, `app/controller/viewer.py:1219-1230`).
+  events through `_pump_events` (`app/controller/viewer.py:1439-1442`, `app/controller/viewer.py:1445-1456`).
 - Threading: observed by grep, `viewer.py` does not import `threading` (the only import near the layer code is
   the layer import at `app/controller/viewer.py:43`) and its only `lock` names are a hook flag
-  (`app/controller/viewer.py:98`) and a display option (`app/controller/viewer.py:951`), so no lock guards the
-  layer state. The view is polled via `after` for frame requests (`app/controller/viewer.py:1458-1461`); worker
-  results are delivered by `check_results` (`app/controller/viewer.py:1222`). The controller is therefore
+  (`app/controller/viewer.py:106`) and a display option (`app/controller/viewer.py:1177`), so no lock guards the
+  layer state. The view is polled via `after` for frame requests (`app/controller/viewer.py:1684-1687`); worker
+  results are delivered by `check_results` (`app/controller/viewer.py:1448`). The controller is therefore
   to be treated as not thread-safe (inferred from the absence of locks, not a documented guarantee).
 - Hooks receive `app` in `build_tab(parent, app)` and its members are "not a versioned API"
   (`docs/dev/hooks.md:24`, `docs/dev/hooks.md:40-41`).
@@ -79,21 +79,21 @@ Layout):
 | `set_overlay(layer_id, **fields)` | `None` (wraps `LayerStack.update`, which returns the changed field names; the handle drops them) | `ValueError` for unknown id, the base layer, a field outside the editable fields, or an invalid value |
 | `remove_overlay(layer_id)` | `None` | `ValueError` for unknown id, the base layer, or a layer not added from Python |
 
-`fields` are limited to the editable fields (`core/layers.py:13`) so a notebook can set `cmap`, `window`,
+`fields` are limited to the editable fields (`core/layers.py:15`) so a notebook can set `cmap`, `window`,
 `alpha`, `visible` at add time; later changes use `set_overlay` (proposed, wraps
-`LayerStack.update`, `core/layers.py:206`). `editable` is a separate keyword, not one of the editable fields: it
-is a `Layer` attribute (`core/layers.py:37`) and the stack refuses it on an image layer
-(`core/layers.py:106-107`), so it is valid only with `kind="label"`. The base layer is read-only through the handle.
+`LayerStack.update`, `core/layers.py:229`). `editable` is a separate keyword, not one of the editable fields: it
+is a `Layer` attribute (`core/layers.py:39`) and the stack refuses it on an image layer
+(`core/layers.py:127-128`), so it is valid only with `kind="label"`. The base layer is read-only through the handle.
 
 ### Errors
 
 Per `docs/STYLE.md` (Errors), each `ValueError` names the field, the offending value and the expected values,
 for example `ValueError("layer_id: got 'base', expected an overlay id from list_layers()")` and
 `ValueError("data: got shape (4, 4), expected at least 3 dimensions")`. `LayerError` messages are bare words
-(`core/layers.py:147`), so the handle translates them rather than leaking them (`LayerError` stays a
+(`core/layers.py:170`), so the handle translates them rather than leaking them (`LayerError` stays a
 `ValueError`, so callers catching `ValueError` keep working). Space is not a parameter in stage 4: the overlay
-takes the base layer's space (`app/controller/viewer.py:726`) and a differing space is refused by the stack
-(`core/layers.py:165-166`). No scan loaded: the `image` message in the table above, which carries the offending state and the expected one.
+takes the base layer's space (`app/controller/viewer.py:749`) and a differing space is refused by the stack
+(`core/layers.py:187-188`). No scan loaded: the `image` message in the table above, which carries the offending state and the expected one.
 
 ### Thread rule
 
@@ -103,19 +103,19 @@ only the documented rule and a cheap guard: each method checks
 `threading.current_thread() is threading.main_thread()` and raises
 `RuntimeError("thread: got <name>, expected the Tk main thread")` otherwise. An optional helper
 `app.call_on_main(fn, timeout=5.0)` would schedule `fn` with the view's `after`
-(`app/controller/viewer.py:1458-1461`) and wait for the result, raising `TimeoutError` like `roi_timecourse`;
+(`app/controller/viewer.py:1684-1687`) and wait for the result, raising `TimeoutError` like `roi_timecourse`;
 it is Open question 1.
 
 ### Copy vs view
 
 - `get_image(copy=True)` returns a copy by default; `copy=False` returns a read-only view
   (`writeable = False`, so writes raise) valid only until the next dataset, scan, reco, flip or slicepack
-  change, because `_viewer_volume` is replaced then (`app/controller/viewer.py:243`).
-- `add_overlay` stores the caller's voxel array by reference today (`np.asarray`, `app/controller/viewer.py:711`,
+  change, because `_viewer_volume` is replaced then (`app/controller/viewer.py:251`).
+- `add_overlay` stores the caller's voxel array by reference today (`np.asarray`, `app/controller/viewer.py:719`,
   stored at `:750`), but copies the affine: `Layer.__post_init__` runs `np.array(self.affine, dtype=np.float64)`
   (`core/layers.py:64`). Proposed: keep the affine copy as is.
   Proposed: copy on add, so later caller mutations cannot desync the cached windows and label colours
-  (`app/controller/viewer.py:750-766`), and count `nbytes` of the stored copy. Memory is the price; a
+  (`app/controller/viewer.py:964-980`), and count `nbytes` of the stored copy. Memory is the price; a
   `copy=False` option is Open question 2.
 - `list_layers` returns affine copies and no voxel data.
 
@@ -178,5 +178,35 @@ One worker each; Appetite is the time box. GUI tests run under Xvfb with `BRKRAW
 4. Handle shape: (a) a separate object `app.layers_api` (default, recommended: keeps the controller from
    growing, easy to version later); (b) flat methods on `app` next to `set_roi`.
 5. Overlay in another space or grid: (a) refuse with `ValueError`, no conversion (default, recommended: matches
-   the "no silent conversion" rule at `app/controller/viewer.py:708-709`); (b) resample onto the scan grid inside
+   the "no silent conversion" rule at `app/controller/viewer.py:716-717`); (b) resample onto the scan grid inside
    `add_overlay`.
+
+### Citations to revisit
+
+Refreshed against base 7a1f42a (WI-0047, WI-0049/0055, WI-0063 changed the files). The sentences below cite code
+whose meaning changed, not only its position; prose is left as written for the Director to decide.
+
+- `core/layers.py:19-38` -> `core/layers.py:20-41`: `Layer` also has a `channels` field (default 1) after `nbytes`.
+- `core/layers.py:7-8` -> `core/layers.py:7`, `core/layers.py:10`: kinds are now `image`, `label`, `rgb`
+  (`KINDS`); sources unchanged.
+- `core/layers.py:15` -> `core/layers.py:17`; `core/layers.py:147` -> `core/layers.py:170`;
+  `core/layers.py:161-166` -> `core/layers.py:183-188`; `core/layers.py:186` -> `core/layers.py:209`: `LayerError`
+  messages are no longer bare words; they are structured `field: got X, expected Y (...)` strings, e.g.
+  `"layer_id: got 'x', expected one of [...] (unknown layer)"`, `"id: ... (duplicate)"`.
+- `core/layers.py:106-107` -> `core/layers.py:127-128`: the editable refusal now also covers kind `rgb`
+  (`core/layers.py:129-130`).
+- `app/controller/viewer.py:695-737` -> `app/controller/viewer.py:703-760`: `_add_array_layer` gained an `rgb`
+  branch (4-D, last axis 3 or 4 channels, uint8 or float 0..1 converted to uint8); the listed behaviours still hold.
+- `app/controller/viewer.py:739-748` -> `app/controller/viewer.py:762-773`: `_remove_layer` now returns `bool` and
+  asks for confirmation (tkinter `askyesno`) when the layer has unsaved paint edits; the cache cleanup moved to
+  `_drop_layer_data` (`app/controller/viewer.py:774-785`).
+- `app/controller/viewer.py:934-941` -> `app/controller/viewer.py:1163-1170`: layer drawing is skipped while RGB
+  is on (`if not rgb_on`).
+- `app/controller/viewer.py:98` -> `app/controller/viewer.py:106`; `app/controller/viewer.py:951` ->
+  `app/controller/viewer.py:1177`: `lock` names in the controller are now more numerous (`_viewer_hook_locked`
+  is set at several places, `hook_locked` state); no `threading` import and no lock guarding layer state still
+  hold. `app/controller/viewer.py:750-766` -> `app/controller/viewer.py:964-980` is a best match: the window and
+  label-colour caches are `_layer_window` and `_layer_label_colors`.
+- Bare `:N` references (no path, so left as written): `:2847` -> `app/controller/viewer.py:3046` (the
+  `reorient_to_ras` call); `:630` -> `app/controller/viewer.py:638` (`_display_grid` def); `:750` ->
+  `app/controller/viewer.py:758` (`self._layer_data[lid] = arr`). Positions only; the claims hold.

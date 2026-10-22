@@ -3,7 +3,9 @@ from __future__ import annotations
 import datetime as dt
 import inspect
 import json
+import queue
 import re
+import threading
 from collections import OrderedDict
 from pathlib import Path
 from types import SimpleNamespace
@@ -60,6 +62,8 @@ class ViewerController:
         self.state = AppState()
         self.dataset = dataset or DatasetController()
         self._view: Optional[ViewerView] = None
+        self._main_calls: queue.SimpleQueue = queue.SimpleQueue()
+        self._main_closed = False
         cfg = load_viewer_config()
         self.state.settings.worker_popup = bool(cfg.get("worker", {}).get("popup", True))
         self._worker = WorkerManager(
@@ -148,7 +152,63 @@ class ViewerController:
         if self._view is None:
             return
         self._worker.check_results()
+        self._drain_main_calls()
         self._view.schedule_poll(self._schedule_worker_poll, 200)
+
+    def call_on_main(self, fn: Callable[[], Any], timeout: float = 5.0) -> Any:
+        """Run ``fn()`` on the Tk main thread and return its result (provisional API).
+
+        Rules: ``fn`` must be callable and ``timeout`` a real number > 0 (seconds), else
+        ValueError. On the main thread ``fn`` runs at once and its exceptions propagate. From
+        another thread the call is queued and run by the main-thread poll (no Tk call is made
+        from the calling thread); fn's own exception is re-raised to the caller. A closed viewer
+        or a missing window raises RuntimeError; no answer within ``timeout`` raises TimeoutError
+        and the call is cancelled (never run later). Closing the viewer releases waiters at once.
+        """
+        if not callable(fn):
+            raise ValueError(f"fn: got {fn!r}, expected a callable")
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not timeout > 0:
+            raise ValueError(f"timeout: got {timeout!r}, expected a number > 0 (seconds)")
+        if threading.current_thread() is threading.main_thread():
+            return fn()
+        if self._main_closed:
+            raise RuntimeError("app: got a closed viewer, expected a running viewer")
+        if self._view is None:
+            raise RuntimeError("app: got no window, expected a viewer window (attach_view first)")
+        record = SimpleNamespace(fn=fn, event=threading.Event(), result=None, error=None, cancelled=False)
+        self._main_calls.put(record)
+        if not record.event.wait(timeout):
+            record.cancelled = True
+            if not record.event.is_set():
+                raise TimeoutError(
+                    f"timeout: got no answer after {timeout:g} s, expected the main thread to run fn within the timeout"
+                )
+        if record.error is not None:
+            raise record.error
+        return record.result
+
+    def _drain_main_calls(self) -> None:
+        while True:
+            try:
+                record = self._main_calls.get_nowait()
+            except queue.Empty:
+                return
+            if record.cancelled:
+                continue
+            try:
+                record.result = record.fn()
+            except Exception as exc:
+                record.error = exc
+            record.event.set()
+
+    def _release_main_calls(self) -> None:
+        while True:
+            try:
+                record = self._main_calls.get_nowait()
+            except queue.Empty:
+                return
+            record.error = RuntimeError("app: got the viewer closing, expected a running viewer")
+            record.event.set()
 
     def get_worker_log_queue(self):
         return self._worker.log_queue
@@ -2071,6 +2131,8 @@ class ViewerController:
             self._view.set_status("Refreshed.")
 
     def on_close(self) -> None:
+        self._main_closed = True
+        self._release_main_calls()
         self._check_disk_cache_on_exit()
 
     def _check_disk_cache_on_exit(self) -> None:

@@ -22,6 +22,7 @@ nav:
       - Addon & Params: user/addon-params.md
       - Convert: user/convert.md
       - Config: user/config.md
+      - Try New Features: user/try-new-features.md
   - Extensions:
       - Overview: extensions/index.md
   - Developer Guide:
@@ -29,4 +30,9 @@ nav:
       - GUI Best Practices: dev/gui.md
       - Release Flow: dev/release.md
       - Contributors: dev/contributors.md
+      - How-to: dev/howto.md
+      - Design Stage 3: dev/design-stage3.md
+      - Design Stage 4 Handle: dev/design-stage4-handle.md
       - Style Notes: STYLE.md
+  - References:
+      - Public Bruker 4D Datasets: references/public-bruker-4d-datasets.md

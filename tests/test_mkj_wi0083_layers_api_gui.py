@@ -149,8 +149,7 @@ def test_copy_false_overlay_refresh_rerenders_views(gui):
 
         view.set_view = counted
 
-    live = app.layers_api.get_overlay_array(lid, copy=False)
-    live[:10] = 0  # the caller mutates its own array in place
+    mask[:10] = 0  # the caller mutates its own array in place (the getter's view is read-only)
     app.layers_api.set_overlay(lid)  # refresh on the main thread
     assert gui.pump(lambda: all(c > 0 for c in counts.values()), 5.0)
     again = app.layers_api.get_overlay_array(lid, copy=False)

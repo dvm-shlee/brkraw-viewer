@@ -141,3 +141,85 @@ def test_no_window_from_worker_thread(monkeypatch, tmp_path):
     w.thread.join(2.0)
     assert isinstance(w.error, RuntimeError)
     assert "no window" in str(w.error) and "expected" in str(w.error)
+
+
+# --- race tests (WI-0079): run-or-cancel and admission decided under _main_lock (headless, no Tk) ---
+import numpy as np  # noqa: E402
+
+from test_core_layers_in_viewer import _View, ctrl, load  # noqa: F401,E402  (fake view, fixture, load helper)
+
+
+class _GatedQueue:
+    """Queue whose ``put`` blocks on ``gate`` just before the real put."""
+
+    def __init__(self, real, entered, gate):
+        self._real = real
+        self._entered = entered
+        self._gate = gate
+
+    def put(self, item):
+        self._entered.set()
+        self._gate.wait(5.0)
+        self._real.put(item)
+
+    def get_nowait(self):
+        return self._real.get_nowait()
+
+    def empty(self):
+        return self._real.empty()
+
+
+def test_admission_race_close_during_put_gives_runtime_error(ctrl, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(ctrl, "_check_disk_cache_on_exit", lambda: None)
+    entered, gate = threading.Event(), threading.Event()
+    ctrl._main_calls = _GatedQueue(ctrl._main_calls, entered, gate)
+    w = _Worker(lambda: ctrl.call_on_main(lambda: 1, timeout=5))
+    assert entered.wait(2.0)
+    closer = threading.Thread(target=ctrl.on_close)
+    closer.start()
+    time.sleep(0.2)  # on_close waits for the lock held across the put
+    gate.set()
+    w.thread.join(1.0)
+    assert w.done()  # the 1 s guarantee, checked right after the one-second join
+    closer.join(2.0)
+    assert not closer.is_alive()
+    assert isinstance(ctrl._view, _View)
+    assert isinstance(w.error, RuntimeError)
+    assert "app: got" in str(w.error) and "expected" in str(w.error)
+    assert w.elapsed < 1.0
+
+
+def test_started_then_timeout_waits_for_the_result(ctrl):  # noqa: F811
+    started_evt, release_evt = threading.Event(), threading.Event()
+
+    def fn():
+        started_evt.set()
+        release_evt.wait(5.0)
+        load(ctrl, np.arange(24, dtype=float).reshape(2, 3, 4))
+        return "done"
+
+    w = _Worker(lambda: ctrl.call_on_main(fn, timeout=0.3))
+    end = time.monotonic() + 2.0
+    while ctrl._main_calls.empty() and time.monotonic() < end:
+        time.sleep(0.01)
+    drainer = threading.Thread(target=ctrl._drain_main_calls)
+    drainer.start()
+    assert started_evt.wait(2.0)
+    time.sleep(0.5)  # past the caller's timeout while fn runs
+    release_evt.set()
+    w.thread.join(3.0)
+    drainer.join(3.0)
+    assert w.done() and not drainer.is_alive()
+    assert w.error is None
+    assert w.result == "done"
+    assert ctrl._view.calls
+
+
+def test_not_started_then_timeout_is_cancelled_and_never_run(ctrl):  # noqa: F811
+    ran = []
+    w = _Worker(lambda: ctrl.call_on_main(lambda: ran.append(1), timeout=0.2))
+    w.thread.join(3.0)
+    assert w.done()
+    assert isinstance(w.error, TimeoutError)
+    ctrl._drain_main_calls()
+    assert ran == []

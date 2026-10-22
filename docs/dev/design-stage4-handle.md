@@ -45,7 +45,7 @@ Observed from the code.
   runs `_display_grid` then `_sync_base_layer` (`app/controller/viewer.py:1163-1170`).
 - The current image: `self._viewer_volume` is the RAS-reoriented volume (`app/controller/viewer.py:79`,
   `app/controller/viewer.py:251`), produced by `_reorient_viewer_volume` from the raw volume and raw affine
-  (`app/controller/viewer.py:3032-3051`, the reorient call at `:2847`). `_display_grid()` (def at `:630`) returns a
+  (`app/controller/viewer.py:3032-3051`, the reorient call at `app/controller/viewer.py:3046`). `_display_grid()` (def at `app/controller/viewer.py:638`) returns a
   `Grid(shape, affine, space)` (`app/controller/viewer.py:658`, `core/resample.py:30`). There is no public accessor for either today.
 - Provisional ROI API on the controller: `set_roi` (`app/controller/viewer.py:1362`), `clear_roi`
   (`app/controller/viewer.py:1406`), `roi_timecourse(wait=False, timeout=None)` (`app/controller/viewer.py:1413`).
@@ -112,7 +112,7 @@ it is Open question 1.
   (`writeable = False`, so writes raise) valid only until the next dataset, scan, reco, flip or slicepack
   change, because `_viewer_volume` is replaced then (`app/controller/viewer.py:251`).
 - `add_overlay` stores the caller's voxel array by reference today (`np.asarray`, `app/controller/viewer.py:719`,
-  stored at `:750`), but copies the affine: `Layer.__post_init__` runs `np.array(self.affine, dtype=np.float64)`
+  stored at `app/controller/viewer.py:758`), but copies the affine: `Layer.__post_init__` runs `np.array(self.affine, dtype=np.float64)`
   (`core/layers.py:64`). Proposed: keep the affine copy as is.
   Proposed: copy on add, so later caller mutations cannot desync the cached windows and label colours
   (`app/controller/viewer.py:964-980`), and count `nbytes` of the stored copy. Memory is the price; a
@@ -207,6 +207,3 @@ whose meaning changed, not only its position; prose is left as written for the D
   is set at several places, `hook_locked` state); no `threading` import and no lock guarding layer state still
   hold. `app/controller/viewer.py:750-766` -> `app/controller/viewer.py:964-980` is a best match: the window and
   label-colour caches are `_layer_window` and `_layer_label_colors`.
-- Bare `:N` references (no path, so left as written): `:2847` -> `app/controller/viewer.py:3046` (the
-  `reorient_to_ras` call); `:630` -> `app/controller/viewer.py:638` (`_display_grid` def); `:750` ->
-  `app/controller/viewer.py:758` (`self._layer_data[lid] = arr`). Positions only; the claims hold.

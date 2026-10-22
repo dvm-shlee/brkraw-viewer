@@ -99,7 +99,7 @@ Python access is described under [Viewer hooks](../dev/hooks.md) (provisional).
 ## Label painting
 
 The **Paint** box next to the ROI buttons paints voxels of a label layer in the three views.
-**Off** / **Paint** / **Erase** and **Brush** are enabled only when an editable label layer is selected;
+**Paint** / **Erase** and **Brush** are enabled only when an editable label layer is selected (`ui/tabs/viewer/paint_tool.py:79-81`);
 **Undo** and **Save** follow their own state; **New label layer** is enabled once a scan is loaded.
 
 1. Press **New label layer**. It adds an empty label layer ("Label 1", "Label 2", ...) on the

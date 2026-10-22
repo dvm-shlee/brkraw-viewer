@@ -111,3 +111,10 @@ def test_set_overlay_and_on_change():
     raises(LayerError, "alpha", h.set_overlay, lid, alpha=3)
     raises(LayerError, "field", h.set_overlay, lid, bogus=1)
     assert len(calls) == 2
+
+
+def test_non_numeric_affine_refused():
+    _, _, calls, h = make()
+    with pytest.raises(ValueError, match=r"affine: got .*expected"):
+        h.add_overlay(np.zeros((4, 5, 6)), affine="not an affine", name="a")
+    assert calls == []

@@ -74,7 +74,10 @@ class LayerHandle:
         base = self._stack.base
         if base is None:
             raise ValueError("image: got no loaded scan, expected a loaded scan (open a dataset and select a scan first)")
-        aff = np.array(affine, dtype=np.float64, copy=True)
+        try:
+            aff = np.array(affine, dtype=np.float64, copy=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"affine: got {affine!r}, expected a 4x4 array of numbers") from exc
         if tuple(arr.shape[:3]) != tuple(base.shape[:3]):
             raise ValueError(f"shape: got {tuple(arr.shape[:3])}, expected {tuple(base.shape[:3])} (the base layer's grid)")
         if aff.shape != (4, 4) or not np.allclose(aff, base.affine):

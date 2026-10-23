@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brkraw-viewer"
-version = "0.4.2"
+version = "0.5.0b1"
 description = "BrkRaw scan viewer plugin for brkraw CLI."
 readme = "README.md"
 requires-python = ">=3.9"

@@ -1,23 +1,26 @@
 # 새 기능 체험하기 / Try the new features
 
-KO: 이 문서는 mokoji-org/brkraw-viewer `main` 브랜치를 설치해 새 기능(ROI 도구, 시계열 플롯, Python API, STYLE.md, 레이어 API)을 직접 확인하는 순서입니다. 각 항목은 "절차 / 기대 결과 / 실패 시 확인할 곳" 순서입니다.
+KO: 이 문서는 베타 v0.5.0b1(잠정 API 포함)을 설치해 새 기능(ROI 도구, 시계열 플롯, Python API, STYLE.md, 레이어 API)을 직접 확인하는 순서입니다. 릴리스 노트는 `RELEASE_NOTES.md`의 "Release v0.5.0b1 (beta)"이며 https://github.com/dvm-shlee/brkraw-viewer/blob/v0.5.0b1/RELEASE_NOTES.md 에서 볼 수 있습니다. 각 항목은 "절차 / 기대 결과 / 실패 시 확인할 곳" 순서입니다.
 
-EN: This page walks through installing mokoji-org/brkraw-viewer `main` and trying each new feature (ROI tool, timecourse plot, Python API, STYLE.md, Layers API). Each item lists steps, expected result and where to look on failure.
+EN: This page walks through the beta v0.5.0b1 (provisional APIs) and trying each new feature (ROI tool, timecourse plot, Python API, STYLE.md, Layers API). The release notes are in `RELEASE_NOTES.md`, "Release v0.5.0b1 (beta)": https://github.com/dvm-shlee/brkraw-viewer/blob/v0.5.0b1/RELEASE_NOTES.md . Each item lists steps, expected result and where to look on failure.
 
 데이터 경로 / Data path: `<YOUR_DATA>` (KO: 시간 축이 있는 스캔, 예: fMRI, 이 들어 있는 Bruker 스터디 폴더, zip 또는 PvDatasets 패키지로 바꾸세요. EN: replace with a Bruker study folder, zip or PvDatasets package that has a multi-frame scan.)
 
 ## 1. 설치 / Install
 
-KO: 새 가상환경에 `main`을 설치합니다. `main`은 아직 PyPI에 없는 `brkraw>=0.6.1rc2`를 요구하므로 GitHub 태그를 먼저 설치합니다.
-EN: Install `main` into a fresh virtual environment. `main` pins `brkraw>=0.6.1rc2`, which is not on PyPI yet, so install that tag from GitHub first (otherwise pip fails with "No matching distribution found for brkraw").
+KO: 새 가상환경에 베타 `v0.5.0b1`을 설치합니다. 이 버전은 아직 PyPI에 없는 `brkraw>=0.6.1rc2`를 요구하므로 GitHub 태그를 먼저 설치합니다.
+EN: Install the beta `v0.5.0b1` into a fresh virtual environment. It pins `brkraw>=0.6.1rc2`, which is not on PyPI yet, so install that tag from GitHub first (otherwise pip fails with "No matching distribution found for brkraw").
 
 ```bash
 python -m venv try-viewer && source try-viewer/bin/activate
 pip install "git+https://github.com/BrkRaw/brkraw@0.6.1rc2"
-pip install "git+https://github.com/mokoji-org/brkraw-viewer@main"
+pip install "git+https://github.com/dvm-shlee/brkraw-viewer@v0.5.0b1"
 ```
 
-- 기대 결과 / Expected: KO: `pip show brkraw-viewer`가 패키지를 보여주고 `brkraw --help`에 `viewer`가 나옵니다. EN: `pip show brkraw-viewer` prints the package; `brkraw --help` lists `viewer`.
+KO: 최신 개발 상태를 보려면 마지막 줄 대신 `pip install "git+https://github.com/dvm-shlee/brkraw-viewer@main"`을 실행합니다.
+EN: For the latest development state, run `pip install "git+https://github.com/dvm-shlee/brkraw-viewer@main"` instead of the last line.
+
+- 기대 결과 / Expected: KO: `pip show brkraw-viewer`가 `Version: 0.5.0b1`을 보여주고 `brkraw --help`에 `viewer`가 나옵니다. EN: `pip show brkraw-viewer` shows `Version: 0.5.0b1`; `brkraw --help` lists `viewer`.
 - 실패 시 / On failure: KO: pip 오류(`brkraw` 0.6.1rc2를 못 찾으면 위 첫 `pip install` 줄을 먼저 실행; 네트워크, git 접근, `pyproject.toml`보다 낮은 Python 버전)를 확인하세요. `brkraw`가 없으면 가상환경이 활성화되지 않은 것입니다. Tk가 없는 Python은 창을 열 수 없습니다(`python -c "import tkinter"`). EN: check the pip error ("No matching distribution found for brkraw" means run the first `pip install` line above; network, git access, Python older than `pyproject.toml` requires); a missing `brkraw` means the venv is not activated; a Python without Tk cannot open the window.
 
 ## 2. 실행 / Launch

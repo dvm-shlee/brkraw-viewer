@@ -21,7 +21,6 @@ import sys
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
 from types import SimpleNamespace
 
 import numpy as np
@@ -33,6 +32,7 @@ from brkraw_viewer.app.services import memory_limit, viewer_config
 from brkraw_viewer.app.workers import convert_worker
 from brkraw_viewer.app.workers.protocol import LoadVolumeRequest, TimecourseRequest
 from brkraw_viewer.ui.main import MainWindow
+from test_mkj_wi0020_checklist_gui import find_roi_radio
 
 GB = 1024 * 1024 * 1024
 SCAN = 11
@@ -96,19 +96,7 @@ class Gui:
             time.sleep(0.01)
 
     def radio(self, text):
-        found = []
-        roi_var = str(self.right._roi_tool_var)  # the ROI radios only (the paint tool has its own "Off")
-
-        def walk(w):
-            for c in w.winfo_children():
-                if (isinstance(c, ttk.Radiobutton) and str(c.cget("text")) == text
-                        and str(c.cget("variable")) == roi_var):
-                    found.append(c)
-                walk(c)
-
-        walk(self.right)
-        assert len(found) == 1, f"ROI button {text!r}: found {len(found)}"
-        return found[0]
+        return find_roi_radio(self.right, text)
 
     def choose(self, text):
         self.radio(text).invoke()

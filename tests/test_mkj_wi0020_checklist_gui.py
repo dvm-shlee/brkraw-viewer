@@ -98,19 +98,7 @@ class Gui:
             time.sleep(0.01)
 
     def radio(self, text):
-        found = []
-        roi_var = str(self.right._roi_tool_var)  # the ROI radios only (the paint tool has its own "Off")
-
-        def walk(w):
-            for c in w.winfo_children():
-                if (isinstance(c, ttk.Radiobutton) and str(c.cget("text")) == text
-                        and str(c.cget("variable")) == roi_var):
-                    found.append(c)
-                walk(c)
-
-        walk(self.right)
-        assert len(found) == 1, f"ROI button {text!r}: found {len(found)}"
-        return found[0]
+        return find_roi_radio(self.right, text)
 
     def choose(self, text):
         self.radio(text).invoke()
@@ -171,6 +159,23 @@ class Gui:
 
     def answered(self):
         return self.ctrl.roi_timecourse() is not None
+
+
+def find_roi_radio(right, text):
+    """The one ROI-tool ``ttk.Radiobutton`` with ``text`` (the paint tool has its own "Off")."""
+    found = []
+    roi_var = str(right._roi_tool_var)
+
+    def walk(w):
+        for c in w.winfo_children():
+            if (isinstance(c, ttk.Radiobutton) and str(c.cget("text")) == text
+                    and str(c.cget("variable")) == roi_var):
+                found.append(c)
+            walk(c)
+
+    walk(right)
+    assert len(found) == 1, f"ROI button {text!r}: found {len(found)}"
+    return found[0]
 
 
 def _destroy_root(root):
@@ -267,6 +272,22 @@ def test_s2_launch_shows_axial_coronal_sagittal_views(gui):
     assert gui.views["xy"].get_image_shape() == (SHAPE[1], SHAPE[0])  # axial: rows y, cols x
     assert gui.views["xz"].get_image_shape() == (SHAPE[2], SHAPE[0])
     assert gui.views["zy"].get_image_shape() == (SHAPE[1], SHAPE[2])
+
+
+def test_find_roi_radio_ignores_the_paint_off_radio(gui):
+    offs = []
+
+    def walk(w):
+        for c in w.winfo_children():
+            if isinstance(c, ttk.Radiobutton) and str(c.cget("text")) == "Off":
+                offs.append(c)
+            walk(c)
+
+    walk(gui.right)
+    assert len(offs) >= 2  # the ROI "Off" and the paint tool's own "Off"
+    roi_off = find_roi_radio(gui.right, "Off")
+    assert str(roi_off.cget("variable")) == str(gui.right._roi_tool_var)
+    assert roi_off in offs
 
 
 def test_s3_roi_buttons_decide_whether_a_click_moves_the_crosshair(gui):

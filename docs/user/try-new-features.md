@@ -1,8 +1,8 @@
 # 새 기능 체험하기 / Try the new features
 
-KO: 이 문서는 베타 v0.5.0b1(잠정 API 포함)을 설치해 새 기능(ROI 도구, 시계열 플롯, Python API, STYLE.md, 레이어 API)을 직접 확인하는 순서입니다. 릴리스 노트는 `RELEASE_NOTES.md`의 "Release v0.5.0b1 (beta)"이며 https://github.com/dvm-shlee/brkraw-viewer/blob/v0.5.0b1/RELEASE_NOTES.md 에서 볼 수 있습니다. 각 항목은 "절차 / 기대 결과 / 실패 시 확인할 곳" 순서입니다.
+KO: 이 문서는 베타 v0.5.0b1(잠정 API 포함)을 설치해 새 기능(ROI 도구, 시계열 플롯, Python API, STYLE.md, 레이어 API)을 직접 확인하는 순서입니다. 릴리스 노트는 `RELEASE_NOTES.md`의 "Release v0.5.0b1 (beta)"이며 [https://github.com/dvm-shlee/brkraw-viewer/blob/v0.5.0b1/RELEASE_NOTES.md](https://github.com/dvm-shlee/brkraw-viewer/blob/v0.5.0b1/RELEASE_NOTES.md) 에서 볼 수 있습니다. 각 항목은 "절차 / 기대 결과 / 실패 시 확인할 곳" 순서입니다.
 
-EN: This page walks through the beta v0.5.0b1 (provisional APIs) and trying each new feature (ROI tool, timecourse plot, Python API, STYLE.md, Layers API). The release notes are in `RELEASE_NOTES.md`, "Release v0.5.0b1 (beta)": https://github.com/dvm-shlee/brkraw-viewer/blob/v0.5.0b1/RELEASE_NOTES.md . Each item lists steps, expected result and where to look on failure.
+EN: This page walks through the beta v0.5.0b1 (provisional APIs) and trying each new feature (ROI tool, timecourse plot, Python API, STYLE.md, Layers API). The release notes are in `RELEASE_NOTES.md`, "Release v0.5.0b1 (beta)": [https://github.com/dvm-shlee/brkraw-viewer/blob/v0.5.0b1/RELEASE_NOTES.md](https://github.com/dvm-shlee/brkraw-viewer/blob/v0.5.0b1/RELEASE_NOTES.md) . Each item lists steps, expected result and where to look on failure.
 
 데이터 경로 / Data path: `<YOUR_DATA>` (KO: 시간 축이 있는 스캔, 예: fMRI, 이 들어 있는 Bruker 스터디 폴더, zip 또는 PvDatasets 패키지로 바꾸세요. EN: replace with a Bruker study folder, zip or PvDatasets package that has a multi-frame scan.)
 

@@ -1,8 +1,8 @@
 # 새 기능 체험하기 / Try the new features
 
-KO: 이 문서는 mokoji-org/brkraw-viewer `main` 브랜치를 설치해 새 기능(ROI 도구, 시계열 플롯, Python API, STYLE.md)을 직접 확인하는 순서입니다. 각 항목은 "절차 / 기대 결과 / 실패 시 확인할 곳" 순서입니다.
+KO: 이 문서는 mokoji-org/brkraw-viewer `main` 브랜치를 설치해 새 기능(ROI 도구, 시계열 플롯, Python API, STYLE.md, 레이어 API)을 직접 확인하는 순서입니다. 각 항목은 "절차 / 기대 결과 / 실패 시 확인할 곳" 순서입니다.
 
-EN: This page walks through installing mokoji-org/brkraw-viewer `main` and trying each new feature (ROI tool, timecourse plot, Python API, STYLE.md). Each item lists steps, expected result and where to look on failure.
+EN: This page walks through installing mokoji-org/brkraw-viewer `main` and trying each new feature (ROI tool, timecourse plot, Python API, STYLE.md, Layers API). Each item lists steps, expected result and where to look on failure.
 
 데이터 경로 / Data path: `<YOUR_DATA>` (KO: 시간 축이 있는 스캔, 예: fMRI, 이 들어 있는 Bruker 스터디 폴더, zip 또는 PvDatasets 패키지로 바꾸세요. EN: replace with a Bruker study folder, zip or PvDatasets package that has a multi-frame scan.)
 
@@ -150,3 +150,127 @@ EN: With a scan open, use the **Paint** box in the Viewer tab; details in `docs/
 
 - 기대 결과 / Expected: KO: 3) 칠한 부분이 뷰에 겹쳐 보입니다. 4) 마지막 획만 사라집니다. 5) 칠한 부분이 지워집니다. 6) 진행 중이던 획이 사라지고 이전 획은 남습니다. 7) Paint가 Off로 바뀝니다. 8) `.nii.gz` 파일이 생기고 같은 스캔의 격자와 맞습니다(값은 0과 1). EN: 3) the paint shows over the views; 4) only the last stroke disappears; 5) painted voxels are erased; 6) the stroke in progress vanishes, earlier strokes stay; 7) Paint switches to Off; 8) a `.nii.gz` file is written on the same grid as the scan (values 0 and 1).
 - 실패 시 / On failure: KO: 버튼 연결은 `src/brkraw_viewer/ui/tabs/viewer/paint_tool.py`, 획과 undo는 `src/brkraw_viewer/core/painter.py`, 저장은 `src/brkraw_viewer/core/labelio.py`, 컨트롤러 연결은 `app/controller/viewer.py`(`on_viewer_paint_press`)를 보세요. 오류 창이 뜨면 메시지를 확인하세요. EN: buttons in `paint_tool.py`, strokes and undo in `core/painter.py`, saving in `core/labelio.py`, controller glue in `on_viewer_paint_press` of `app/controller/viewer.py`; an error dialog shows the message.
+
+## 9. 레이어 API (Python, 잠정 / provisional) / Layers API from Python (provisional)
+
+KO: 레이어 API(`app.layers_api`)는 잠정(provisional)이며 바뀔 수 있습니다. 전체 참조는 [`docs/dev/hooks.md`](../dev/hooks.md)의 Layers 항목을 보세요. 이 API는 Tk 메인 스레드에서만 호출할 수 있고, `app`은 viewer hook의 `build_tab(parent, app)`으로만 얻습니다(노트북이 다른 방법으로 `app`을 얻을 수 있는 것은 아닙니다). 설치 방법은 6번의 `try-roi-hook`과 같습니다(entry point `brkraw.viewer.hook`, 모듈 하나).
+EN: The layers API (`app.layers_api`) is provisional and may change; the full reference is the Layers bullet in [`docs/dev/hooks.md`](../dev/hooks.md). It can only be called on the Tk main thread, and `app` is obtained only through a viewer hook's `build_tab(parent, app)` (a notebook has no other way to get `app`). Install the hook like `try-roi-hook` in section 6 (entry point `brkraw.viewer.hook`, one module).
+
+### 9A. 메인 스레드의 hook 버튼 / Hook buttons on the main thread
+
+`try-layers-hook/pyproject.toml`:
+
+```toml
+[project]
+name = "try-layers-hook"
+version = "0.0.1"
+
+[project.entry-points."brkraw.viewer.hook"]
+try-layers = "try_layers_hook:TryLayersHook"
+```
+
+`try-layers-hook/try_layers_hook.py`:
+
+```python
+# example: checklist_layers_hook
+import numpy as np
+from tkinter import ttk
+
+
+class TryLayersHook:
+    name = "try-layers"
+
+    def build_tab(self, parent, app):
+        frame = ttk.Frame(parent)
+        state = {}
+
+        def add_mask():
+            img, affine = app.layers_api.get_image()
+            if img.ndim > 3:                       # a multi-frame scan: use the first frame
+                img = img[..., 0]
+            mask = (img > img.mean()).astype(np.uint8)
+            state["id"] = app.layers_api.add_overlay(mask, affine, name="mask", kind="label")
+            print([info.name for info in app.layers_api.list_layers()])  # base first, then "mask"
+
+        def half_alpha():
+            app.layers_api.set_overlay(state["id"], alpha=0.5)
+
+        def remove():
+            app.layers_api.remove_overlay(state.pop("id"))
+
+        ttk.Button(frame, text="Add mask", command=add_mask).pack(anchor="w")
+        ttk.Button(frame, text="Half alpha", command=half_alpha).pack(anchor="w")
+        ttk.Button(frame, text="Remove", command=remove).pack(anchor="w")
+        return frame
+```
+
+```bash
+pip install ./try-layers-hook
+brkraw viewer   # KO: 터미널에서 실행해야 print 출력이 보입니다 / EN: run from a terminal to see the prints
+```
+
+KO: 1) `<YOUR_DATA>`를 열고 스캔을 고른 뒤 **Extensions** 탭에서 `try-layers`를 고릅니다. 2) **Add mask**, **Half alpha**, **Remove**를 차례로 누릅니다.
+EN: 1) Open `<YOUR_DATA>`, select a scan, and pick `try-layers` in the **Extensions** tab. 2) Press **Add mask**, **Half alpha**, **Remove** in turn.
+
+- 기대 결과 / Expected: KO: **Add mask** 뒤 Viewer 탭의 세 뷰에 마스크 오버레이가 보이고 터미널에 이름 목록이 base, `mask` 순서로 찍힙니다. **Half alpha** 뒤 오버레이가 더 투명해지고, **Remove** 뒤 오버레이가 모두 사라집니다. EN: after **Add mask** the overlay shows in the Viewer tab's views and the terminal prints the names, base first, then `mask`; after **Half alpha** the overlay is visibly more transparent; after **Remove** no overlay is left.
+- 실패 시 / On failure: KO: 레이어 동작은 `src/brkraw_viewer/app/controller/layers_api.py`를 보세요. 터미널의 오류는 `<field>: got ..., expected ...` 형식입니다(예: `shape: got ..., expected ...`는 마스크가 스캔 격자와 다르다는 뜻, `image: got no loaded scan, ...`는 스캔을 먼저 고르라는 뜻). 예제가 `app.call_on_main`을 쓰는 부분(예: 5초 안에 답이 없을 때)은 `src/brkraw_viewer/app/controller/viewer.py`의 `call_on_main`을 보세요. 목록에 `try-layers`가 없으면 `pip show try-layers-hook`과 "Failed to load viewer hook" 경고를 확인하세요. EN: layer behaviour is in `src/brkraw_viewer/app/controller/layers_api.py`; terminal errors read `<field>: got ..., expected ...` (for example `shape: got ..., expected ...` means the mask does not match the scan grid, `image: got no loaded scan, ...` means select a scan first); calls through `app.call_on_main` (for example no answer within 5 s) are in `call_on_main` in `src/brkraw_viewer/app/controller/viewer.py`; if `try-layers` is not listed, check `pip show try-layers-hook` and the "Failed to load viewer hook" warning.
+
+### 9B. 다른 스레드에서 / From another thread
+
+KO: 긴 계산이나 노트북처럼 다른 스레드에서 같은 일을 하는 방법입니다. 그 스레드에서 `app.layers_api`를 직접 부르면 `RuntimeError`가 납니다. 배열은 `app.call_on_main(...)`으로 받고, 오버레이 추가와 제거는 `app.call_on_main(lambda: ...)`로만 합니다. 앞의 `try-layers-hook`과 같은 패키지 형식이며, 모듈 `try_layers_hook.py`를 아래 코드로 바꾸세요(노트북도 hook을 통해서만 `app`을 얻습니다).
+EN: This is how a long computation or a notebook would do the same work from another thread. Calling `app.layers_api` directly from that thread raises `RuntimeError`. Get the arrays through `app.call_on_main(...)`, and add and remove the overlay only through `app.call_on_main(lambda: ...)`. Use the same package layout as `try-layers-hook` and replace the module `try_layers_hook.py` with the code below (a notebook also gets `app` only through a hook).
+
+```python
+# example: checklist_layers_thread
+import threading
+
+import numpy as np
+from tkinter import ttk
+
+
+class TryLayersHook:
+    name = "try-layers"
+
+    def build_tab(self, parent, app):
+        frame = ttk.Frame(parent)
+        state = {}
+        self.errors = []
+        self.threads = []
+
+        def run(job):
+            def target():
+                try:
+                    job()
+                except BaseException as exc:      # report it; a thread's error is otherwise lost
+                    self.errors.append(exc)
+                    print("thread failed:", exc)
+            th = threading.Thread(target=target)
+            self.threads.append(th)
+            th.start()
+
+        def add_mask():
+            img, affine = app.call_on_main(lambda: app.layers_api.get_image())
+            if img.ndim > 3:
+                img = img[..., 0]
+            mask = (img > img.mean()).astype(np.uint8)    # the long computation, off the main thread
+            state["id"] = app.call_on_main(
+                lambda: app.layers_api.add_overlay(mask, affine, name="mask", kind="label"))
+            print(app.call_on_main(lambda: [i.name for i in app.layers_api.list_layers()]))
+
+        def half_alpha():
+            app.call_on_main(lambda: app.layers_api.set_overlay(state["id"], alpha=0.5))
+
+        def remove():
+            app.call_on_main(lambda: app.layers_api.remove_overlay(state.pop("id")))
+
+        ttk.Button(frame, text="Add mask (thread)", command=lambda: run(add_mask)).pack(anchor="w")
+        ttk.Button(frame, text="Half alpha (thread)", command=lambda: run(half_alpha)).pack(anchor="w")
+        ttk.Button(frame, text="Remove (thread)", command=lambda: run(remove)).pack(anchor="w")
+        return frame
+```
+
+KO: 같은 순서로 **Add mask (thread)**, **Half alpha (thread)**, **Remove (thread)**를 누릅니다.
+EN: Press **Add mask (thread)**, **Half alpha (thread)**, **Remove (thread)** in the same order.
+
+- 기대 결과 / Expected: KO: 9A와 같습니다. 오버레이가 뷰에 보이고, 이름이 base, `mask` 순서로 찍히며, 알파가 바뀌고, 제거하면 사라집니다. 터미널에 `thread failed:`가 없습니다. EN: same as 9A: the overlay shows in the views, the names print base first then `mask`, the alpha changes and Remove clears it; no `thread failed:` line appears.
+- 실패 시 / On failure: KO: `thread failed: thread: got ..., expected the Tk main thread`는 `app.layers_api`를 스레드에서 직접 부른 것입니다(`layers_api.py`의 `_main_thread`). `TimeoutError`나 `app: got a closed viewer ...`는 `src/brkraw_viewer/app/controller/viewer.py`의 `call_on_main`을 보세요(메인 스레드가 5초 안에 답하지 못했거나 창이 닫힘). 그 밖의 `<field>: got ..., expected ...` 메시지는 9A와 같습니다. EN: `thread failed: thread: got ..., expected the Tk main thread` means `app.layers_api` was called directly from the thread (`_main_thread` in `layers_api.py`); `TimeoutError` or `app: got a closed viewer ...` points at `call_on_main` in `src/brkraw_viewer/app/controller/viewer.py` (the main thread did not answer within 5 s, or the window closed); other `<field>: got ..., expected ...` messages are as in 9A.

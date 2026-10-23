@@ -180,6 +180,7 @@ def test_other_thread_uses_call_on_main(real):
     t0 = time.monotonic()
     mask, affine = _threshold_mask(app)  # built on the main thread
     out = {}
+    first = app.layers_api.add_overlay(mask, affine, name="mask", kind="label")  # first overlay, main thread
 
     def work():
         try:
@@ -203,13 +204,15 @@ def test_other_thread_uses_call_on_main(real):
     assert not th.is_alive()
     try:
         assert "error" not in out, out.get("error")
-        assert out["id"] in out["ids"] and out["ids"][0] == "base"
+        assert out["id"] != first and out["ids"][0] == "base"
+        assert first in out["ids"] and out["id"] in out["ids"]
         assert isinstance(out.get("direct"), RuntimeError)
         _report("other_thread", overlay_id=out["id"], n_layers=len(out["ids"]),
                 direct_error=type(out["direct"]).__name__, elapsed=round(time.monotonic() - t0, 3))
     finally:
-        if out.get("id") in _ids(app):
-            app.layers_api.remove_overlay(out["id"])
+        for lid in (out.get("id"), first):
+            if lid in _ids(app):
+                app.layers_api.remove_overlay(lid)
 
 
 def test_remove_overlays_leaves_only_the_base(real):

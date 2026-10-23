@@ -97,10 +97,12 @@ class Gui:
 
     def radio(self, text):
         found = []
+        roi_var = str(self.right._roi_tool_var)  # the ROI radios only (the paint tool has its own "Off")
 
         def walk(w):
             for c in w.winfo_children():
-                if isinstance(c, ttk.Radiobutton) and str(c.cget("text")) == text:
+                if (isinstance(c, ttk.Radiobutton) and str(c.cget("text")) == text
+                        and str(c.cget("variable")) == roi_var):
                     found.append(c)
                 walk(c)
 

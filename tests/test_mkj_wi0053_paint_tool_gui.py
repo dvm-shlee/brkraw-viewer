@@ -31,6 +31,7 @@ from brkraw_viewer.app.services import memory_limit, viewer_config
 from brkraw_viewer.app.workers import convert_worker
 from brkraw_viewer.app.workers.protocol import LoadVolumeRequest, TimecourseRequest
 from brkraw_viewer.ui.main import MainWindow
+from test_mkj_wi0020_checklist_gui import find_roi_radio
 
 GB = 1024 * 1024 * 1024
 N = 3
@@ -104,17 +105,7 @@ class Gui:
         return str(self.paint._radios[mode].cget("state"))
 
     def roi(self, text):
-        found = []
-
-        def walk(w):
-            for c in w.winfo_children():
-                if isinstance(c, ttk.Radiobutton) and str(c.cget("text")) == text and c not in self.paint._radios.values():
-                    found.append(c)
-                walk(c)
-
-        walk(self.right)
-        assert len(found) == 1
-        found[0].invoke()
+        find_roi_radio(self.right, text).invoke()
         self.root.update()
 
     def xy_of(self, plane, row, col):

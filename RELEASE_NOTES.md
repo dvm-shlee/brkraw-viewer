@@ -18,7 +18,7 @@ New features
 Fixes
 
 - `brkraw_viewer.ui`: Tk variables and `PhotoImage`s are bound to their own Tk root; no implicit root is created, and hook option variables are bound to their window.
-- Window icon is loaded from the package assets (`brkraw_viewer/assets`), with a fallback to the legacy location.
+- Window icon is loaded from the package assets (`brkraw_viewer/assets`).
 - Error messages in `brkraw_viewer.core` (RGB layer, Layer alpha, painter) follow the form `<field>: got ..., expected ...`.
 - `ViewerController.call_on_main`: run-or-cancel is decided under the main lock, which fixes an admission race with window close.
 

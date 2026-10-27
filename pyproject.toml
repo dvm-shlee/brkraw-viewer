@@ -43,7 +43,8 @@ brkraw = { git = "https://github.com/BrkRaw/brkraw", tag = "0.6.1rc2" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not realdata'"
+markers = ["realdata: needs the public PV5.1 dataset (BRKRAW_VIEWER_REALDATA) and a display; deselected by default, run with -m realdata"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

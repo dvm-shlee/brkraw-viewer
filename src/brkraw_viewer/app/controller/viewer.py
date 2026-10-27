@@ -74,7 +74,7 @@ class ViewerController:
             on_registry_result=self._on_registry_result,
         )
         self._popups: dict[str, TaskPopup] = {}
-        # job_id -> (dataset path, scan, reco, output paths) of conversions queued or running (WI-0079).
+        # job_id -> (dataset path, scan, reco, output paths) of conversions queued or running.
         self._convert_pending: dict[str, tuple] = {}
         self._apply_memory_config(cfg)
         # (path, scan, reco) the user chose to load / not to load although over the limit.
@@ -85,18 +85,19 @@ class ViewerController:
         self._viewer_raw_volume: Optional[object] = None
         self._viewer_raw_affine: Optional[object] = None
         self._viewer_shape: Optional[tuple[int, ...]] = None
-        # C5 (WI-0072): display window per (frame, extra indices) of the volume it was
+        # display window per (frame, extra indices) of the volume it was
         # computed from; reset when the volume object changes.
         self._viewer_windows: dict[tuple, tuple[float, float]] = {}
         self._viewer_windows_source: Optional[Callable[[], object]] = None
-        # Layer core C1-C4 (WI-0072): index 0 is the shown scan on the display grid D;
+        # Layer list: index 0 is the shown scan on the display grid D;
         # other layers are drawn over it, resampled per shown slice. Arrays given in this
-        # process (source "array") are held here; the Python handle that adds them is stage 4.
+        # process (source "array") are held here; the Python handle adds them.
         self._layers = LayerStack()
         self._layer_data: dict[str, np.ndarray] = {}
         self._layer_windows: dict[tuple, tuple[float, float]] = {}
         self._layer_label_colors: dict[str, dict[int, tuple[int, int, int]]] = {}
-        # Label painting (WI-0053): one LabelEditor per editable label layer, unsaved layers, the
+        self._layer_custom_colors: dict[str, dict[int, tuple[int, int, int]]] = {}  # chosen by the user
+        # Label painting: one LabelEditor per editable label layer, unsaved layers, the
         # layer the paint tool acts on, and the stroke in progress.
         self._layer_editors: dict[str, LabelEditor] = {}
         self._layer_dirty: set[str] = set()
@@ -112,13 +113,13 @@ class ViewerController:
         self._hook_args_by_name: dict[str, dict] = {}
         self._timecourse_window = None
         self._timecourse_plot = None
-        # C9 (WI-0072): the worker answers one voxel's timecourse from the data it holds;
+        # the worker answers one voxel's timecourse from the data it holds;
         # main keeps only the last answer (no full-volume file, no full copy).
         self._timecourse_job_id: Optional[str] = None
         self._timecourse_pending: Optional[tuple] = None
         self._timecourse_series: Optional[tuple] = None  # (request key, values)
         self._timecourse_frames: int = 0
-        # Temporary ROI (WI-0005): one ROI at most, never saved; the answer is the per-frame mean.
+        # Temporary ROI: one ROI at most, never saved; the answer is the per-frame mean.
         self._roi: Optional[dict] = None
         self._roi_job_id: Optional[str] = None
         self._roi_pending: Optional[tuple] = None
@@ -126,7 +127,7 @@ class ViewerController:
         self._viewer_space_listeners: list[Callable[[str], None]] = []
         self._frame_cache: "OrderedDict[int, dict]" = OrderedDict()
         self._frame_cache_limit = 8
-        self._frame_cache_bytes_limit = 64 * 1024 * 1024  # recent frames besides the shown one (C9)
+        self._frame_cache_bytes_limit = 64 * 1024 * 1024  # recent frames besides the shown one
         self._pending_frame_requests: dict[str, int] = {}
         self._frame_request_after_id: Optional[str] = None
         self._convert_hook_enabled: bool = True
@@ -273,7 +274,7 @@ class ViewerController:
             self._on_large_load_notice(result)
             return
         if self._viewer_job_id and result.job_id != self._viewer_job_id:
-            # Nobody will read this result: free its shared memory (WI-0068).
+            # Nobody will read this result: free its shared memory.
             release_shared_array(result.shm_name)
             return
         if result.shm_name is None:
@@ -283,7 +284,7 @@ class ViewerController:
         try:
             from ..workers.shm import map_shared_array
 
-            # C9 (WI-0072): use the shared block itself (no second copy in main); its name
+            # use the shared block itself (no second copy in main); its name
             # is removed at once and the memory is freed with the last array using it.
             data = map_shared_array(result.shm_name, result.shape, result.dtype)
         except Exception as exc:
@@ -319,7 +320,7 @@ class ViewerController:
         self._viewer_volume = data
         self._viewer_shape = data.shape if hasattr(data, "shape") else None
         # A 3-frame hook result seen one frame at a time or as 3 channels is the same grid: do not
-        # move the crosshair when RGB is turned on or off (WI-0105, D-0175).
+        # move the crosshair when RGB is turned on or off.
         same_grid = bool(
             self._viewer_hook_enabled
             and self._viewer_frames == 3
@@ -358,8 +359,8 @@ class ViewerController:
                 "slicepacks": self._viewer_slicepacks,
                 "res": self._viewer_res,
             }
-            # C9 (WI-0072): besides the shown frame, main keeps recent frames only while they
-            # are small (WI-0068 speed for many small frames), never more than 64 MB of them.
+            # besides the shown frame, main keeps recent frames only while they
+            # are small (speeds up many small frames), never more than 64 MB of them.
             while len(self._frame_cache) > 1 and (
                 len(self._frame_cache) > self._frame_cache_limit
                 or self._frame_cache_nbytes() - self._frame_entry_nbytes(next(reversed(self._frame_cache.values())))
@@ -382,7 +383,7 @@ class ViewerController:
         return sum(self._frame_entry_nbytes(e) for e in self._frame_cache.values())
 
     def _apply_memory_config(self, cfg: dict) -> None:
-        """Read the memory settings of ``viewer.cache`` (WI-0104 items 8 and 7)."""
+        """Read the memory settings of ``viewer.cache``."""
         cache = cfg.get("cache", {}) if isinstance(cfg, dict) else {}
         if not isinstance(cache, dict):
             cache = {}
@@ -452,7 +453,7 @@ class ViewerController:
         """What the user answered "Load it anyway?" for: the reco and the hook with its options.
 
         The raw 2dseq and a hook's result are different amounts of memory, so a Yes or a No for
-        one is not an answer for the other (WI-0104). The worker's ``keep`` list stays the reco
+        one is not an answer for the other. The worker's ``keep`` list stays the reco
         alone (``_memory_key``).
         """
         hook = ""
@@ -473,7 +474,7 @@ class ViewerController:
         """The worker did not load: the expected size is over the limit. Ask, then go on or stop."""
         if self._viewer_job_id and result.job_id != self._viewer_job_id:
             return
-        # C9: the limit is for the total held by all layers, so ask with that total.
+        # the limit is for the total held by all layers, so ask with that total.
         total_bytes = int(result.estimated_bytes or 0) + int(getattr(result, "held_bytes", 0) or 0)
         estimated_mb = float(total_bytes) / (1024 * 1024)
         limit_mb = float(result.limit_bytes or 0) / (1024 * 1024)
@@ -514,17 +515,17 @@ class ViewerController:
             "memory_limit_bytes": self._memory_limit_bytes,
             "peak_limit_bytes": self._peak_limit_bytes,
             "memory_confirmed": self._memory_choice_key(hooked) in self._memory_confirmed,
-            # C9 (WI-0072): the viewer shows one scan layer, so the worker keeps only the
+            # the viewer shows one scan layer, so the worker keeps only the
             # reco being loaded and frees what it holds for any other.
             "keep": (key,),
-            # layers whose data main holds count in the same total (C9)
+            # layers whose data main holds count in the same total
             "other_held_bytes": sum(
                 int(lay.nbytes) for lay in (getattr(self, "_layers", None) or []) if lay.source == "array"
             ),
         }
 
     def _on_timecourse_result(self, result: TimecourseResult) -> None:
-        """The worker's answer for one voxel (C9). Older answers are dropped."""
+        """The worker's answer for one voxel. Older answers are dropped."""
         if self._roi_job_id is not None and result.job_id == self._roi_job_id:
             self._on_roi_result(result)
             return
@@ -585,7 +586,7 @@ class ViewerController:
         self._view.registry_refresh()
 
     def start_convert(self, request: ConvertRequest) -> bool:
-        """Queue a conversion unless the same one is already queued or running (WI-0079).
+        """Queue a conversion unless the same one is already queued or running.
 
         The same request means the same dataset, scan and reco, or any output file that a queued
         conversion is about to write. A conversion of another scan is not blocked. Returns whether
@@ -680,7 +681,7 @@ class ViewerController:
             st.extra_indices = []
 
     def _frame_window(self, vol: object, frame3d: np.ndarray, key: tuple) -> tuple[float, float]:
-        """C5: the display window of one 3D frame, computed once from the whole frame.
+        """The display window of one 3D frame, computed once from the whole frame.
 
         Cached per ``key`` (frame index, extra indices) for as long as ``vol`` is the
         displayed volume, so every slice and every plane of the frame shares it.
@@ -711,10 +712,10 @@ class ViewerController:
             api = self._layers_api = LayersAPI(self)
         return api
 
-    # ---- layer core C1-C4 (WI-0072) --------------------------------------------------------
+    # ---- layer core --------------------------------------------------------
 
     def _display_grid(self) -> Optional[Grid]:
-        """Display grid D of the shown scan: its shape after reorientation and ``A_D`` (C1)."""
+        """Display grid D of the shown scan: its shape after reorientation and ``A_D``."""
         vol = self._viewer_volume
         if vol is None:
             return None
@@ -738,7 +739,7 @@ class ViewerController:
             return None
 
     def _sync_base_layer(self, grid: Grid) -> None:
-        """Keep layer 0 equal to the shown scan; layers in another space are dropped (C1)."""
+        """Keep layer 0 equal to the shown scan; layers in another space are dropped."""
         base = self._layers.base
         if (
             base is not None
@@ -792,7 +793,7 @@ class ViewerController:
         """Add an array held by this process as a layer over the shown scan.
 
         Internal for now: the stage-4 Python handle will offer it. The array must be in
-        the shown scan's coordinate space (no silent conversion, C1).
+        the shown scan's coordinate space (no silent conversion).
         """
         arr = np.asarray(data)
         if arr.ndim < 3:
@@ -859,10 +860,11 @@ class ViewerController:
         if self._paint_stroke is not None and self._paint_stroke["layer"] == layer_id:
             self._paint_stroke = None
         self._layer_label_colors.pop(layer_id, None)
+        self._layer_custom_colors.pop(layer_id, None)
         for key in [k for k in self._layer_windows if k[0] == layer_id]:
             self._layer_windows.pop(key, None)
 
-    # ---- label painting glue (WI-0053): the maths is in core/painter.py, the Tk side in ui ----
+    # ---- label painting glue: the maths is in core/painter.py, the Tk side in ui ----
 
     def select_layer(self, layer_id: Optional[str]) -> None:
         """Choose the layer the paint tool acts on (None clears)."""
@@ -903,6 +905,36 @@ class ViewerController:
             "can_new": self._layers.base is not None,
             "dirty": bool(target and target[0].id in self._layer_dirty),
         }
+
+    _PAINT_VALUE = 1  # the label value the paint tool writes
+
+    def viewer_paint_color(self) -> Optional[tuple[int, int, int]]:
+        """The colour of the painted label value on the paint target; None without a target."""
+        target = self._paint_target()
+        if target is None:
+            return None
+        value = self._PAINT_VALUE
+        custom = self._layer_custom_colors.get(target[0].id, {})
+        if value in custom:
+            return custom[value]
+        return _LABEL_PALETTE[(value - 1) % len(_LABEL_PALETTE)]
+
+    def on_viewer_paint_color(self, rgb: tuple[int, int, int]) -> bool:
+        """Set the colour of the painted label value on the paint target; False without a target."""
+        ok = isinstance(rgb, (tuple, list)) and len(rgb) == 3 and all(
+            isinstance(c, (int, np.integer)) and not isinstance(c, bool) and 0 <= int(c) <= 255 for c in rgb
+        )
+        if not ok:
+            raise ValueError(f"rgb: got {rgb!r}, expected three ints in 0..255")
+        target = self._paint_target()
+        if target is None:
+            return False
+        color = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+        lid = target[0].id
+        self._layer_custom_colors.setdefault(lid, {})[self._PAINT_VALUE] = color
+        self._layer_label_colors.setdefault(lid, {})[self._PAINT_VALUE] = color
+        self._render_viewer_views()
+        return True
 
     def _paint_point(self, layer: Layer, data: np.ndarray, plane: str, row: float, col: float):
         """Display pixel (plane, row, col) -> (axis, index, row, col) in the layer's voxels.
@@ -1041,7 +1073,7 @@ class ViewerController:
 
     def _layer_window(self, layer: Layer, frame: int, vol3d: np.ndarray) -> tuple[float, float]:
         if layer.window is not None:
-            return layer.window  # the user's window always wins (C5)
+            return layer.window  # the user's window always wins
         key = (layer.id, int(frame))
         window = self._layer_windows.get(key)
         if window is None:
@@ -1054,13 +1086,14 @@ class ViewerController:
         if colors is None:
             ids = [int(v) for v in np.unique(vol) if int(v) != 0]
             colors = {v: _LABEL_PALETTE[(v - 1) % len(_LABEL_PALETTE)] for v in ids}
+            colors.update(self._layer_custom_colors.get(layer.id, {}))
             self._layer_label_colors[layer.id] = colors
         return colors
 
     def _layer_planes(self, grid: Grid, indices: tuple[int, int, int], base_frame: int) -> dict[str, list]:
         """Colour and alpha of every visible non-base layer on the three shown slices.
 
-        Only the shown slices are sampled (C3); the result lines up with the base views
+        Only the shown slices are sampled; the result lines up with the base views
         (``xy`` = (y, x), ``xz`` = (z, x), ``zy`` = (y, z)).
         """
         out: dict[str, list] = {"xy": [], "xz": [], "zy": []}
@@ -1101,7 +1134,7 @@ class ViewerController:
                         alpha=layer.alpha,
                         hidden_labels=hidden or None,
                     )
-                    if rules:  # other C4 rules (zero, below, ...) on label values too
+                    if rules:  # other transparency rules (zero, below, ...) on label values too
                         a = np.where(transparency_mask(values, rules), np.float32(0.0), a).astype(np.float32)
                 else:
                     vmin, vmax = self._layer_window(layer, frame, vol3d)
@@ -1135,7 +1168,7 @@ class ViewerController:
         data = np.asarray(vol)
         if self._viewer_hook_enabled:
             # A hook result with exactly 3 frames may be colour, though main holds one frame of it;
-            # the 3 frames come from the worker while RGB is on (WI-0105, D-0175). A 3-frame block
+            # the 3 frames come from the worker while RGB is on. A 3-frame block
             # of a longer result is not colour.
             rgb_candidate = bool(self._viewer_frames == 3 and data.ndim == 4 and data.shape[3] in (1, 3))
         else:
@@ -1162,7 +1195,7 @@ class ViewerController:
             self._view.set_viewer_rgb_state(enabled=rgb_eligible, active=self.state.viewer.rgb_mode)
         if data.ndim < 3:
             return
-        # C5 (WI-0072): one window for the whole frame, shared by every slice and plane.
+        # one window for the whole frame, shared by every slice and plane.
         window: Optional[tuple[float, float]] = None
         if data.ndim == 3:
             window = self._frame_window(vol, data, frame_key)
@@ -1233,7 +1266,7 @@ class ViewerController:
                 overflow_blend = base_blend * ratio_scale
             except Exception:
                 overflow_blend = 0.0
-        # Layers over the scan (C1-C4): layer 0 follows the shown scan; others are sampled
+        # Layers over the scan: layer 0 follows the shown scan; others are sampled
         # on the shown slices only. A failure here must not hide the scan itself.
         layer_views: Optional[dict] = None
         if not rgb_on:
@@ -1332,8 +1365,7 @@ class ViewerController:
         frame_count: Optional[int] = 1
         if not self._viewer_hook_enabled:
             # With a converter hook on, the worker still reads the hook for every frame once and
-            # keeps the result; main asks for the frame it shows, like for an unhooked 4D scan
-            # (C9, WI-0105).
+            # keeps the result; main asks for the frame it shows, like for an unhooked 4D scan.
             cycle_frames = self._resolve_cycle_frames()
             if cycle_frames <= 1 or (
                 cycle_frames == self._viewer_slicepacks and self._viewer_frames <= 1
@@ -1342,7 +1374,7 @@ class ViewerController:
                 frame_count = None
         if self._viewer_hook_enabled and self.state.viewer.rgb_mode and self._viewer_frames == 3:
             # RGB on for a 3-frame hook result: main holds the 3 channels only for as long as RGB
-            # is on, and gets them from the worker's held result (WI-0105, D-0175).
+            # is on, and gets them from the worker's held result.
             frame_start, frame_count = 0, 3
         self._pending_frame_requests = {}
         if frame_start is not None and frame_count == 1:
@@ -1393,7 +1425,7 @@ class ViewerController:
             bool(v.flip_z),
             tuple(int(i) for i in indices),
             tuple(int(i) for i in (v.extra_indices or [])),
-            # the hook result and the plain data are different series (WI-0105)
+            # the hook result and the plain data are different series
             self._timecourse_hook(),
         )
 
@@ -1407,7 +1439,7 @@ class ViewerController:
         )
 
     def _request_timecourse(self, indices: tuple[int, int, int]) -> None:
-        """Ask the worker for one voxel's values over the frames (C9). Repeats are not sent."""
+        """Ask the worker for one voxel's values over the frames. Repeats are not sent."""
         key = self._timecourse_key(indices)
         if key is None or key == self._timecourse_pending:
             return
@@ -1435,7 +1467,7 @@ class ViewerController:
         logger.debug("Timecourse request: scan=%s reco=%s index=%s", sid, rid, index)
         self._worker.submit(req)
 
-    # ----- temporary ROI (provisional Python API, WI-0005) -----
+    # ----- temporary ROI (provisional Python API) -----
 
     def set_roi(
         self,
@@ -1729,7 +1761,7 @@ class ViewerController:
             )
 
     def _clear_timecourse(self) -> None:
-        """Forget the last timecourse answer and any pending request (nothing on disk, C9)."""
+        """Forget the last timecourse answer and any pending request (nothing on disk)."""
         self._timecourse_job_id = None
         self._timecourse_pending = None
         self._timecourse_series = None
@@ -2280,7 +2312,7 @@ class ViewerController:
                 self._timecourse_plot.set_vline(float(self.state.viewer.frame_index))
             except Exception:
                 pass
-        # The same for a converter hook (WI-0105): the worker holds every frame of its result and
+        # The same for a converter hook: the worker holds every frame of its result and
         # main shows the frame it was sent.
         if self._viewer_hook_enabled and self.state.viewer.rgb_mode and self._viewer_frames == 3:
             self._render_viewer_views()  # colour: main has the 3 channels, no frame to ask for
@@ -2495,7 +2527,7 @@ class ViewerController:
             if self._timecourse_plot is not None:
                 self._timecourse_plot.set_message("Load image first.")
             return
-        # Main shows one frame; the worker answers from the data it holds (C9).
+        # Main shows one frame; the worker answers from the data it holds.
         self._update_timecourse_plot()
 
     def on_viewer_space_change(self, value: str) -> None:
@@ -2642,7 +2674,7 @@ class ViewerController:
             if int(self._viewer_frames) <= 1:
                 self._timecourse_plot.set_message("Timecourse requires 4D data.")
                 return
-            # main holds one frame: the worker answers from the data it holds (C9)
+            # main holds one frame: the worker answers from the data it holds
             key = self._timecourse_key((int(xi), int(yi), int(zi)))
             if self._timecourse_series is None or self._timecourse_series[0] != key:
                 self._request_timecourse((int(xi), int(yi), int(zi)))
@@ -2726,7 +2758,7 @@ class ViewerController:
             self._request_viewer_volume()
 
     def on_convert_hook_options_apply(self, hook_name: str, hook_args: Optional[dict]) -> None:
-        # Hook options are kept once per hook name and shared by the Viewer and Convert tabs (WI-0088):
+        # Hook options are kept once per hook name and shared by the Viewer and Convert tabs:
         # an Apply in either tab updates both and, with the Viewer hook on, reloads the shown result.
         logger.debug("Convert hook options apply: %s", (hook_name or "").strip())
         self.on_hook_options_apply(hook_name, hook_args)
@@ -3037,7 +3069,7 @@ class ViewerController:
             self._view.set_convert_hook_state(
                 self._viewer_hook_name or "None",
                 self._convert_hook_enabled and bool(self._viewer_hook_name),
-                # The options applied in the Convert tab live in the by-name store (WI-0078);
+                # The options applied in the Convert tab live in the by-name store;
                 # `_viewer_hook_args` would put the viewer's older options back.
                 self._hook_args_by_name.get(self._viewer_hook_name or "", self._viewer_hook_args),
             )

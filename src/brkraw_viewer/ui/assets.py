@@ -19,7 +19,7 @@ def load_icon(
     Icons are cached per root (on the root widget), so two roots never share a PhotoImage.
     Without master the current default root is used; with none, the result is None. The
     default root is read, never created: ``tk._get_default_root()`` would open a hidden Tk
-    root that later windows' Tk variables bind to (WI-0022).
+    root that later windows' Tk variables bind to.
     """
     try:
         if master is None:

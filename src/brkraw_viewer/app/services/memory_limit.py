@@ -1,4 +1,4 @@
-"""Memory limits of the viewer, from the installed memory (WI-0104 items 8 and 7, D-0169, D-0170).
+"""Memory limits of the viewer, from the installed memory.
 
 ``viewer.cache.memory_limit_mb`` missing or ``auto``: 16 % of the installed memory, at least
 512 MB. A number is used as written (an old config keeps its number); 0 means never ask.

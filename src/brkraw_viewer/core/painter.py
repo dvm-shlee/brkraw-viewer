@@ -1,4 +1,4 @@
-"""Label painter core (WI-0049, stage 3 design WI-B), pure numpy and Tk-free.
+"""Label painter core, pure numpy and Tk-free.
 
 The stamp footprint and the Bresenham line are ported from
 ui/components/label_painter.py (_apply_brush, _iter_line_rc).

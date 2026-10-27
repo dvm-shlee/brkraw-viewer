@@ -1,4 +1,4 @@
-"""Layers drawn by the controller and viewport through the layer core (C1-C4, WI-0072).
+"""Layers drawn by the controller and viewport through the layer core.
 
 Synthetic data only, no Tk window. The controller's layer methods are internal until the
 stage-4 Python handle; these tests call them directly.
@@ -88,7 +88,7 @@ def _grey(values, window):
 
 
 def test_the_scan_itself_as_a_layer_lines_up_pixel_for_pixel(ctrl):
-    # C1 + C3 end to end: the raw array on the raw grid, drawn over the display grid,
+    # End to end: the raw array on the raw grid, drawn over the display grid,
     # must equal the base views exactly (signed permutation -> exact values).
     raw = raw_volume()
     views, _ = load(ctrl, raw)
@@ -155,7 +155,7 @@ def test_label_layer_nearest_palette_and_background(ctrl):
 
 
 def test_label_layer_hidden_values_and_rules_reach_the_view(ctrl):
-    # wi-0072-choi-1 finding 3: the controller must apply the layer's transparency to labels
+    # the controller must apply the layer's transparency to labels
     raw = raw_volume()
     load(ctrl, raw)
     lab = np.zeros(raw.shape, dtype=np.uint16)

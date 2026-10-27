@@ -30,24 +30,24 @@ logger = logging.getLogger("brkraw.worker")
 _loader_cache: dict[str, brkapi.BrukerLoader] = {}
 
 # Per-reco constants (frame-axis number, affine) are computed once and reused for every
-# later frame (WI-0068: re-reading the JCAMP files cost ~0.52 s per frame).
+# later frame (re-reading the JCAMP files cost ~0.52 s per frame).
 _UNSET = object()
 _meta_cache: dict[tuple, object] = {}
 # (path, scan_id, reco_id) of recos this worker has loaded -> bytes it still holds for it
-# (layer core C9, WI-0072). brkraw keeps a fully read reco in ``scan.image_info[reco]
+# brkraw keeps a fully read reco in ``scan.image_info[reco]
 # ["dataobj"]`` (one copy); a frame-wise partial read or a hook result is not kept (0).
 _held_recos: dict[tuple, int] = {}
-# The scan objects behind ``_held_recos``, so their data can be freed (C9).
+# The scan objects behind ``_held_recos``, so their data can be freed.
 _held_scans: dict[tuple, object] = {}
 # The hooks (name and options, ``_hook_key``) whose result was loaded for each held reco, the plain
 # 2dseq being the empty hook. The size check is skipped only for a request already in this set
 # (later frames); a hook, or other hook options, can return far more than the 2dseq that is
-# already held (WI-0104).
+# already held.
 _held_hook_keys: dict[tuple, set] = {}
 # The converter hook's whole result for each held reco: ``reco_key -> (hook key, result)``, the
 # result as the hook returned it (an array, or a tuple of slicepacks). One per reco: other hook
 # options, or a plain load, let the old one go. The window process gets only the frame it shows
-# (layer core C9, WI-0105; before, every frame of it stayed in main as shared memory, D-0145).
+# (every frame of it no longer stays in main as shared memory).
 _held_hook_data: dict[tuple, tuple] = {}
 
 
@@ -83,7 +83,7 @@ def _drop_hook_result(key: tuple) -> None:
 def _hook_block(full: object, task: LoadVolumeRequest) -> tuple:
     """The part of a hook result main shows: ``(data, frames of the whole result)``.
 
-    Both frame fields None = every frame (the old request of WI-0077). Otherwise the frames
+    Both frame fields None = every frame (the old request). Otherwise the frames
     ``frame_start`` to ``frame_start + frame_count`` (None = to the end) of the 4th axis, kept as
     an axis like a frame-wise plain read; a start past the last frame is the last frame. A
     result without a frame axis is sent whole.
@@ -403,10 +403,10 @@ def _expected_nbytes(scan: ScanLoader, reco_id: int) -> Optional[int]:
 
 
 def _hook_output_info(scan: ScanLoader, reco_id: int, data_kwargs: dict) -> Optional[dict]:
-    """What a converter hook says about its output before reading, when it says (C9).
+    """What a converter hook says about its output before reading, when it says.
 
     A hook module that offers ``get_dataobj_info(scan, reco_id, **kwargs)`` (brkraw-sordino
-    does, WI-0071) reports the size of its output without reading. Returns ``nbytes`` (the
+    does) reports the size of its output without reading. Returns ``nbytes`` (the
     result), ``peak_nbytes`` (the hook's own estimate of its highest memory use: one volume's
     reconstruction + the result buffer + three cache frames, so it is already complete and
     must not be added to ``nbytes``) and ``limit_nbytes`` (the memory the hook allows itself);
@@ -442,7 +442,7 @@ def _hook_output_info(scan: ScanLoader, reco_id: int, data_kwargs: dict) -> Opti
 
 
 def _hook_output_nbytes(scan: ScanLoader, reco_id: int, data_kwargs: dict) -> Optional[int]:
-    """Bytes a converter hook's ``get_dataobj`` will return, when the hook says (C9)."""
+    """Bytes a converter hook's ``get_dataobj`` will return, when the hook says."""
     info = _hook_output_info(scan, reco_id, data_kwargs)
     return info["nbytes"] if info else None
 
@@ -458,7 +458,7 @@ def _kept_nbytes(scan: ScanLoader, reco_id: int) -> int:
 
 
 def _release_reco(key: tuple) -> None:
-    """Free the data the worker holds for one reco (C9). Never raises."""
+    """Free the data the worker holds for one reco. Never raises."""
     nbytes = _held_recos.pop(key, 0)
     _held_hook_keys.pop(key, None)
     _held_hook_data.pop(key, None)
@@ -546,7 +546,7 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         scan = _ensure_hook_state(loader, task.scan_id, enable_hook=enable_hook)
         hook_args = task.hook_args or {}
         reco_key = (task.path, task.scan_id, task.reco_id)
-        # C9: first free what the layers no longer shown hold, then count what stays.
+        # first free what the layers no longer shown hold, then count what stays.
         _release_others(task.keep, reco_key)
         data_kwargs = _filter_hook_kwargs(scan.get_dataobj, hook_args)
         # flip_* are affine-only options; never pass them to get_dataobj.
@@ -562,7 +562,7 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
                 # (result bytes, the hook's peak bytes, the hook's own limit): the last two
                 # are None when the hook does not say (older brkraw-sordino).
                 if enable_hook:
-                    # a hook can change shape and dtype: ask the hook first (C9)
+                    # a hook can change shape and dtype: ask the hook first
                     info = _hook_output_info(scan, task.reco_id, data_kwargs)
                     if info is not None and info["nbytes"] is not None:
                         return info["nbytes"], info["peak_nbytes"], info["limit_nbytes"]
@@ -580,7 +580,7 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
             peak_over = ask_peak and peak is not None and peak + held_other > task.peak_limit_bytes
             if hook_refuses and (size_over or peak_over):
                 # The hook will stop this itself and say what to change; asking first would
-                # only delay that message (D-0170).
+                # only delay that message.
                 logger.info("Hook peak %s is over its own limit %s: not asking, the hook reports it", peak, hook_limit)
             elif size_over or peak_over:
                 reason = "both" if size_over and peak_over else ("size" if size_over else "peak")
@@ -638,7 +638,7 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
             # The hook is read once, for every frame, and the worker keeps the result; main
             # gets the frame it shows (``_hook_block``). Never ask the hook for one frame: a
             # hook such as sordino honours ``frames=`` and the slider would then show it
-            # frozen (WI-0077). A request for the held result (a later frame) reads nothing.
+            # frozen. A request for the held result (a later frame) reads nothing.
             held = _held_hook_data.get(reco_key)
             if held is not None and held[0] == this_hook:
                 data = held[1]
@@ -720,7 +720,7 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
         )
         logger.debug("Load volume result: shape=%s slicepacks=%s frames=%s", getattr(data, "shape", None), slicepacks, frames)
         affine = _affine_for_request(scan, task, hook_args)
-        # C9: what brkraw keeps for this reco, and the hook's whole result, are the copies the worker holds.
+        # what brkraw keeps for this reco, and the hook's whole result, are the copies the worker holds.
         _held_recos[reco_key] = _held_bytes(reco_key, scan, task.reco_id)
         _held_scans[reco_key] = scan
         _held_hook_keys.setdefault(reco_key, set()).add(this_hook)
@@ -758,13 +758,13 @@ def _process_load_volume(task: LoadVolumeRequest, output_queue: multiprocessing.
 def _timecourse_view(scan: ScanLoader, task: TimecourseRequest, held: object = None) -> np.ndarray:
     """The held reco as a view on the displayed (RAS-reoriented) grid; nothing is copied.
 
-    brkraw keeps a fully read reco in ``image_info`` (the one copy the worker holds, C9);
+    brkraw keeps a fully read reco in ``image_info`` (the one copy the worker holds);
     the reorientation is flips and a transpose, so the result is a view of that array.
-    With ``held`` (a converter hook's whole result, WI-0105) that result is used instead and
+    With ``held`` (a converter hook's whole result) that result is used instead and
     the affine is the hook's.
     """
     if held is not None:
-        data = held  # the hook's whole result the worker holds (WI-0105): not read again
+        data = held  # the hook's whole result the worker holds: not read again
     else:
         data = scan.get_dataobj(task.reco_id)
     if data is None:
@@ -815,7 +815,7 @@ def _timecourse_view(scan: ScanLoader, task: TimecourseRequest, held: object = N
 
 
 def _roi_timecourse(task: TimecourseRequest, view: np.ndarray) -> TimecourseResult:
-    """Per-frame mean over a 2D mask on one display slice (C6 4D statistics, C9 in the worker).
+    """Per-frame mean over a 2D mask on one display slice (4D statistics, computed in the worker).
 
     Reads only the masked voxels of that slice (mask voxels x frames), never the volume.
     NaN or infinite values are left out per frame; a frame with none left gives NaN.
@@ -850,7 +850,7 @@ def _roi_timecourse(task: TimecourseRequest, view: np.ndarray) -> TimecourseResu
 
 
 def _process_timecourse(task: TimecourseRequest, output_queue: multiprocessing.Queue) -> None:
-    """One voxel's values over the frames, from the held array (C9: no file, no full copy)."""
+    """One voxel's values over the frames, from the held array (no file, no full copy)."""
     try:
         reco_key = (task.path, task.scan_id, task.reco_id)
         held = None

@@ -1,4 +1,4 @@
-"""Tk-free layer core of the viewer (layer core contract v0.1, WI-0010; built in WI-0072).
+"""Tk-free layer core of the viewer.
 
 numpy only. The viewport, the controller and later the Python handle use these
 functions; nothing here imports Tk.

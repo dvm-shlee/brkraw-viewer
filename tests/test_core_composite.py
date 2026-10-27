@@ -1,4 +1,4 @@
-"""T2 transparency and compositing tests (contract v0.1 C4, WI-0072). Tk-free, 4x4 arrays."""
+"""T2 transparency and compositing tests. Tk-free, 4x4 arrays."""
 from __future__ import annotations
 
 import numpy as np

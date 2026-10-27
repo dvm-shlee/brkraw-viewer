@@ -1,4 +1,4 @@
-"""T1 resampling tests for the layer core (contract v0.1 C1/C3, WI-0010 -> WI-0072). Tk-free."""
+"""T1 resampling tests for the layer core. Tk-free."""
 from __future__ import annotations
 
 import math
@@ -55,7 +55,7 @@ def test_map_indices_snaps_to_multiples_of_half_only_within_tolerance():
     big = np.eye(4)
     big[2, 3] = 2e-6  # beyond the tolerance, not snapped
     assert rs.map_indices(big, np.array([[0.0, 0.0, 1.0]]))[0, 2] != 1.0
-    # the boundary itself (wi-0072-choi-1 finding 7): 0.9e-6 snaps, 1.1e-6 does not
+    # at the boundary: 0.9e-6 snaps, 1.1e-6 does not
     near = np.eye(4)
     near[0, 3], near[1, 3] = 0.9e-6, 0.5 + 1.1e-6
     out = rs.map_indices(near, np.array([[2.0, 2.0, 0.0]]))

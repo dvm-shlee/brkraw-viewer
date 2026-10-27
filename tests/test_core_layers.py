@@ -1,4 +1,4 @@
-"""C2 layer list and events (contract v0.1, WI-0072). Tk-free."""
+"""Layer list and events. Tk-free."""
 from __future__ import annotations
 
 import numpy as np

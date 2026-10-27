@@ -1,3 +1,11 @@
+## Unreleased
+
+Changes since 0.5.0b1
+
+Fixes
+
+- Test files renamed to test_<topic>.py.
+
 # Release v0.5.0b1 (beta)
 
 Date: 2026-10-23
@@ -24,7 +32,7 @@ Fixes
 
 Docs
 
-- `docs/user/try-new-features.md`: checklist for the new features, including section 9 (Layers API, provisional) with example GUI tests; a real-data layers GUI test (`tests/test_mkj_wi0089_realdata_layers_gui.py`) covers the layers API.
+- `docs/user/examples.md`: runnable hook examples for the ROI API and the Layers API (provisional), run as GUI tests; a real-data layers GUI test (`tests/test_realdata_layers_gui.py`) covers the layers API.
 - `docs/dev/hooks.md`: ROI timecourse, layers API (provisional) and `call_on_main` entries.
 - `docs/STYLE.md`: test file naming, layout, docstring, error style and GUI rules.
 - `mkdocs.yml` and `docs/`: `mkdocs build --strict` is clean (all pages are in the nav).

@@ -1,4 +1,4 @@
-"""T3 display-window tests (contract v0.1 C5, WI-0072): one window per frame, every slice the same.
+"""T3 display-window tests: one window per frame, every slice the same.
 
 Synthetic data only, no Tk window.
 """

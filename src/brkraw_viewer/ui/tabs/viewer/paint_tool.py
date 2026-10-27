@@ -1,49 +1,51 @@
-"""Tk binding of the label paint tool (WI-0053, stage 3 WI-C).
+"""Tk binding of the label paint tool.
 
 Thin on purpose: the brush, undo and saving live in core/painter.py and core/labelio.py; the
-controller maps display pixels to layer voxels. This box holds the Off / Paint / Erase choice,
-the brush size and the Undo / New label layer / Save label... buttons, and forwards pointer
-events (given in view image row/col) to the controller callbacks.
+controller maps display pixels to layer voxels. The widgets here are the brush size, the colour
+button of the painted label and the Undo / New label layer / Save label... buttons; they sit in
+the ROI tool box (roi_tool_box.py), which decides when drawing is on. Pointer events (given in
+view image row/col) are forwarded to the controller callbacks: the left button paints, the right
+button erases.
 """
 
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import colorchooser, filedialog, messagebox, ttk
 from typing import Callable, Optional
 
 PAINT_MODES = ("off", "paint", "erase")
 
 
+def _hex(rgb: tuple[int, int, int]) -> str:
+    return "#%02x%02x%02x" % tuple(int(c) for c in rgb)
+
+
 class PaintTool:
-    """The paint box and its stroke forwarding; ``frame`` is placed by the caller."""
+    """The paint widgets and stroke forwarding; ``frame`` is placed by the caller."""
 
     def __init__(self, parent: tk.Misc, *, callbacks, master: tk.Misc, on_activate: Optional[Callable[[], None]] = None) -> None:
         self._callbacks = callbacks
         self._on_activate = on_activate
-        self.mode_var = tk.StringVar(master=master, value="off")
+        self._drawing = False
+        self.color: Optional[tuple[int, int, int]] = None
         self.brush_var = tk.IntVar(master=master, value=3)
         self.frame = ttk.Frame(parent)
-        ttk.Label(self.frame, text="Paint").pack(side=tk.LEFT, padx=(0, 4))
-        self._radios: dict[str, ttk.Radiobutton] = {}
-        for mode in PAINT_MODES:
-            radio = ttk.Radiobutton(
-                self.frame,
-                text=mode.capitalize(),
-                value=mode,
-                variable=self.mode_var,
-                command=self._on_mode,
-            )
-            radio.pack(side=tk.LEFT, padx=(0, 2))
-            self._radios[mode] = radio
-        ttk.Label(self.frame, text="Brush").pack(side=tk.LEFT, padx=(6, 2))
-        self._brush = ttk.Spinbox(self.frame, from_=1, to=99, width=3, textvariable=self.brush_var)
+        top = ttk.Frame(self.frame)
+        top.pack(side=tk.TOP, fill=tk.X)
+        ttk.Label(top, text="Brush").pack(side=tk.LEFT, padx=(0, 2))
+        self._brush = ttk.Spinbox(top, from_=1, to=99, width=3, textvariable=self.brush_var)
         self._brush.pack(side=tk.LEFT)
-        self._undo_btn = ttk.Button(self.frame, text="Undo", command=self.undo, width=5)
-        self._undo_btn.pack(side=tk.LEFT, padx=(6, 2))
-        self._new = ttk.Button(self.frame, text="New label layer", command=self.new_layer)
-        self._new.pack(side=tk.LEFT, padx=(2, 2))
-        self._save = ttk.Button(self.frame, text="Save label...", command=self.save)
+        ttk.Label(top, text="Colour").pack(side=tk.LEFT, padx=(6, 2))
+        self.color_button = tk.Button(top, width=2, relief=tk.RAISED, command=self.choose_color, state="disabled")
+        self.color_button.pack(side=tk.LEFT)
+        self._undo_btn = ttk.Button(top, text="Undo", command=self.undo, width=5)
+        self._undo_btn.pack(side=tk.LEFT, padx=(6, 0))
+        bottom = ttk.Frame(self.frame)
+        bottom.pack(side=tk.TOP, fill=tk.X, pady=(4, 0))
+        self._new = ttk.Button(bottom, text="New label layer", command=self.new_layer)
+        self._new.pack(side=tk.LEFT, padx=(0, 2))
+        self._save = ttk.Button(bottom, text="Save label...", command=self.save)
         self._save.pack(side=tk.LEFT, padx=(2, 0))
         self.refresh()
 
@@ -51,11 +53,19 @@ class PaintTool:
 
     @property
     def mode(self) -> str:
-        return str(self.mode_var.get())
+        """"paint" while drawing is on (the right button erases per press), else "off"."""
+        return "paint" if self._drawing else "off"
 
     @property
     def active(self) -> bool:
-        return self.mode != "off"
+        return self._drawing
+
+    def set_drawing(self, on: bool) -> None:
+        """Drawing on or off; turning it off ends any stroke."""
+        on = bool(on)
+        if self._drawing and not on:
+            self.cancel()
+        self._drawing = on
 
     def brush_size(self) -> int:
         try:
@@ -65,41 +75,60 @@ class PaintTool:
 
     def set_off(self) -> None:
         self.cancel()
-        self.mode_var.set("off")
+        self._drawing = False
 
     def refresh(self) -> None:
-        """Enable the box from the controller's state; the radios only for an editable label layer."""
+        """Enable the widgets from the controller's state; drawing only for an editable label layer."""
         getter = getattr(self._callbacks, "viewer_paint_state", None)
         state = getter() if callable(getter) else {}
         enabled = bool(state.get("enabled"))
-        if not enabled and self.active:
+        if not enabled and self._drawing:
             self.set_off()
             if self._on_activate is not None:
                 self._on_activate()
-        for mode in ("paint", "erase"):
-            self._radios[mode].configure(state="normal" if enabled else "disabled")
         self._brush.configure(state="normal" if enabled else "disabled")
         self._undo_btn.configure(state="normal" if state.get("can_undo") else "disabled")
         self._save.configure(state="normal" if state.get("can_save") else "disabled")
         self._new.configure(state="normal" if state.get("can_new") else "disabled")
+        self._refresh_color()
+
+    def _refresh_color(self) -> None:
+        getter = getattr(self._callbacks, "viewer_paint_color", None)
+        rgb = getter() if callable(getter) else None
+        self.color = tuple(int(c) for c in rgb) if rgb is not None else None
+        if self.color is None:
+            default = self.frame.winfo_toplevel().cget("background") if self.frame.winfo_exists() else "#d9d9d9"
+            self.color_button.configure(state="disabled", bg=default, activebackground=default)
+            return
+        hex_color = _hex(self.color)
+        self.color_button.configure(state="normal", bg=hex_color, activebackground=hex_color)
 
     # ----- user actions -----
 
-    def _on_mode(self) -> None:
-        if not self.active:
-            self.cancel()
-        if self._on_activate is not None:
-            self._on_activate()
+    def choose_color(self) -> None:
+        """Open the colour dialog; a chosen colour goes to the controller, Cancel changes nothing."""
+        handler = getattr(self._callbacks, "on_viewer_paint_color", None)
+        if not callable(handler) or self.color is None:
+            return
+        chosen = colorchooser.askcolor(color=_hex(self.color), parent=self.frame, title="Label colour")
+        if not chosen or chosen[0] is None:
+            return
+        rgb = tuple(int(round(float(c))) for c in chosen[0])
+        try:
+            handler(rgb)
+        except ValueError as exc:
+            messagebox.showerror("Label colour", str(exc), parent=self.frame)
+        self.refresh()
 
-    def press(self, plane: str, row: float, col: float) -> bool:
+    def press(self, plane: str, row: float, col: float, erase: bool = False) -> bool:
         handler = getattr(self._callbacks, "on_viewer_paint_press", None)
-        if not self.active or not callable(handler):
+        if not self._drawing or not callable(handler):
             return False
-        return bool(handler(plane, row, col, self.mode, self.brush_size()))
+        return bool(handler(plane, row, col, "erase" if erase else "paint", self.brush_size()))
 
     def move(self, plane: str, row: float, col: float) -> None:
         handler = getattr(self._callbacks, "on_viewer_paint_move", None)
-        if self.active and callable(handler):
+        if self._drawing and callable(handler):
             handler(plane, row, col)
 
     def release(self) -> None:

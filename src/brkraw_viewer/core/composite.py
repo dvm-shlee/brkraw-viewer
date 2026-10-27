@@ -1,4 +1,4 @@
-"""Layer transparency rules and straight-alpha compositing (WI-0072, contract C4)."""
+"""Layer transparency rules and straight-alpha compositing."""
 
 from typing import Any, Dict, List, Tuple, Optional, Union, Sequence
 import numpy as np

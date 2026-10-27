@@ -29,7 +29,7 @@ class ViewerTab:
         self.top = ViewerTopPanel(self.frame, callbacks=self._cb)
         self.top.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
 
-        self.right = ViewerRightPanel(self.frame, callbacks=self._cb)
+        self.right = ViewerRightPanel(self.frame, callbacks=self._cb, tool_box=self.top.tool_box)
         self.right.grid(row=1, column=0, sticky="nsew", padx=8)
 
         self.status = ViewerStatusBar(self.frame)

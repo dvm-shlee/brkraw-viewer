@@ -47,19 +47,19 @@ class LoadVolumeRequest:
     flip_y: bool = False
     flip_z: bool = False
     # Ask before a load that would make the data the worker holds larger than this
-    # (0 = never ask). Since WI-0072 (C9) the limit is for the total held by all layers.
+    # (0 = never ask). The limit is for the total held by all layers.
     memory_limit_bytes: int = 0
     # The user already chose "continue" for this reco.
     memory_confirmed: bool = False
     # (path, scan_id, reco_id) of the layers still shown. The worker frees the data it holds
-    # for any other reco before loading (C9). None keeps everything (the old behaviour).
+    # for any other reco before loading. None keeps everything (the old behaviour).
     keep: Optional[Tuple[Tuple[str, int, int], ...]] = None
-    # Bytes the main process holds for layers it owns (arrays given in main, C2 "array");
-    # counted in the same total as what the worker holds (C9).
+    # Bytes the main process holds for layers it owns (arrays given in main, source "array");
+    # counted in the same total as what the worker holds.
     other_held_bytes: int = 0
     # With a converter hook on: ask when the hook's reconstruction peak (``peak_nbytes``, plus
-    # what is held for other data) is over this many bytes (a share of the installed memory,
-    # WI-0104 item 7, D-0170). 0 = do not ask for the peak.
+    # what is held for other data) is over this many bytes (a share of the installed memory).
+    # 0 = do not ask for the peak.
     peak_limit_bytes: int = 0
 
 
@@ -76,7 +76,7 @@ class LoadVolumeResult:
     # Nothing was loaded: the expected size is over the limit and the user must choose.
     needs_confirm: bool = False
     # This load's expected bytes, and the bytes the worker already holds for the layers
-    # that stay (C9); the notice compares their sum with limit_bytes.
+    # that stay; the notice compares their sum with limit_bytes.
     estimated_bytes: Optional[int] = None
     limit_bytes: int = 0
     held_bytes: int = 0
@@ -90,7 +90,7 @@ class LoadVolumeResult:
 @dataclass(frozen=True)
 class TimecourseRequest:
     """One voxel's values over all frames, answered by the worker from the data it holds
-    (layer core C9, WI-0072; replaces the full-volume .npy file of WI-0068)."""
+    (no full-volume file is written)."""
 
     job_id: str
     path: str
@@ -106,14 +106,14 @@ class TimecourseRequest:
     flip_x: bool = False
     flip_y: bool = False
     flip_z: bool = False
-    # ROI over time (contract C6/C9): when roi_mask is given, the answer is the per-frame
+    # ROI over time: when roi_mask is given, the answer is the per-frame
     # mean of the finite values inside this 2D mask on display slice roi_index of roi_axis
     # (mask laid out like np.take(volume, roi_index, roi_axis)); ``index`` is then unused.
     roi_axis: Optional[int] = None
     roi_index: int = 0
     roi_mask: Optional[Any] = None
     # With a converter hook on, the answer comes from the hook's whole result the worker holds
-    # (the one loaded with this name and these options, WI-0105); None = the plain 2dseq.
+    # (the one loaded with this name and these options); None = the plain 2dseq.
     hook_name: Optional[str] = None
     hook_args: Optional[Dict[str, Any]] = None
 

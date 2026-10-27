@@ -13,7 +13,7 @@ def _ras_transform(affine: np.ndarray) -> np.ndarray:
 
 
 def ras_display_affine(affine: np.ndarray, shape: Sequence[int]) -> np.ndarray:
-    """Affine of the display grid D (layer core C1): the grid after :func:`reorient_to_ras`.
+    """Affine of the display grid D: the grid after :func:`reorient_to_ras`.
 
     ``A_D = A @ inv_ornt_aff(T, shape)``; only axes are permuted and flipped, so any
     obliquity of ``A`` stays in ``A_D``. Needs only the shape, not the data.

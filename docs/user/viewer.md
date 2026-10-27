@@ -75,20 +75,44 @@ The status line under the views shows space, hook, zoom, RGB, crosshair and slic
 Tabs can be detached into their own window and re-attached from the right-click menu on
 the tab title. The icon at the right of the main status bar opens the worker log.
 
+## ROI tool box
+
+![The ROI tool box in Drawing mode](img/roi-tool-box.png)
+
+The **ROI tool** box sits in the top row between **Orientation** and **Hook**. Its mode decides
+what the mouse does on the three views; exactly one tool owns the mouse at a time.
+
+- **Crosshair** (default): a click moves the crosshair, as before.
+- **Selection**: a one-shot ROI tool. A second row, **Shape** (**Square** or **Circle**, Square by
+  default), is shown only in this mode. Drag with the left button; when you release, the ROI is
+  set and the mode returns to Crosshair. See [ROI timecourse](#roi-timecourse).
+- **Drawing**: the left button paints and the right button erases voxels of the selected label
+  layer (on macOS, where the right button is Button-2, that button erases). Drawing needs an
+  editable label layer; **Drawing** is disabled until one is selected. See
+  [Label painting](#label-painting).
+
+The box also holds the paint widgets: **Brush** size, **Colour**, **Undo**, **New label layer**
+and **Save label...**. The **Colour** button shows the colour of the label value being painted
+(label 1) on the selected label layer; click it to pick another colour with the system colour
+dialog. Cancel changes nothing. Switching away from Drawing ends the stroke in progress;
+switching away from Selection drops a drag in progress.
+
 ## ROI timecourse
 
-The **ROI** buttons above the views (Off, Square, Circle) draw a temporary region of interest
-on one view and plot its mean timecourse.
+The **Selection** mode of the ROI tool box draws a temporary region of interest on one view and
+plots its mean timecourse.
 
-1. Choose **Square** or **Circle**. While a tool is on, clicking a view does not move the
-   crosshair.
+1. Choose **Selection**, then **Square** or **Circle**. While Selection is on, clicking a view
+   does not move the crosshair.
 2. Press in a view and drag: the shape is drawn as you move. A square spans the two corners
    of the drag; a circle has the drag as its diameter.
-3. Release the button: the ROI is set on the slice shown in that view, and the Timecourse
+3. Release the button: the ROI is set on the slice shown in that view, the mode returns to
+   Crosshair, and the Timecourse
    window (open it with the **Value** button) shows the mean of the voxels inside the ROI for
    each frame. The title gives the shape and the voxel count.
-4. **Esc** (with the pointer or focus on a view) or choosing **Off** removes the ROI; the plot
-   returns to the voxel timecourse. With the tool off, clicking works as before.
+4. **Esc** (with the pointer or focus on a view) removes the ROI; the plot returns to the voxel
+   timecourse. The ROI stays shown until the next selection or Esc. In Crosshair mode, clicking
+   works as before.
 
 Limits: one ROI at a time, in 2D on one slice of one view, never saved. It is cleared when you
 change the slice on its axis (scrolling, the sliders, a click in another view), the scan,
@@ -98,17 +122,17 @@ Python access is described under [Viewer hooks](../dev/hooks.md) (provisional).
 
 ## Label painting
 
-The **Paint** box next to the ROI buttons paints voxels of a label layer in the three views.
-**Paint** / **Erase** and **Brush** are enabled only when an editable label layer is selected (`ui/tabs/viewer/paint_tool.py:79-81`);
+The **Drawing** mode of the ROI tool box paints voxels of a label layer in the three views.
+**Drawing** and **Brush** are enabled only when an editable label layer is selected;
 **Undo** and **Save** follow their own state; **New label layer** is enabled once a scan is loaded.
 
 1. Press **New label layer**. It adds an empty label layer ("Label 1", "Label 2", ...) on the
    shown scan's grid and selects it. It needs a loaded scan.
-2. Choose **Paint** or **Erase** (**Off** is the default). While a tool is on, clicking a view
-   does not move the crosshair, and the ROI tool is switched off (one tool at a time; choosing a
-   ROI shape switches painting off).
+2. Choose **Drawing** (**Crosshair** is the default). While Drawing is on, clicking a view
+   does not move the crosshair, and the ROI selection is off (one tool at a time; choosing
+   **Selection** switches drawing off).
 3. Set the **Brush** size (1 to 99): it is the diameter in voxels of a disc, in the slice shown
-   in that view. Press in a view and drag. **Paint** writes label 1 and **Erase** writes 0.
+   in that view. Press in a view and drag: the left button writes label 1 and the right button writes 0.
    Points outside the volume are ignored.
 4. Release the button: the stroke is one undo step.
 

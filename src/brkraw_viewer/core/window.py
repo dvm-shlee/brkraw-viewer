@@ -1,4 +1,4 @@
-"""Default display window of a layer frame (layer core contract C5, WI-0072).
+"""Default display window of a layer frame.
 
 The window is computed once per loaded 3D frame from the whole frame, not from the
 slice on screen, so every slice of the frame is shown with the same brightness.

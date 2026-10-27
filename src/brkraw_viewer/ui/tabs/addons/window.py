@@ -60,7 +60,7 @@ class AddonsTab:
             pass
 
         # One editor window per target file (and rule category), so a later Save cannot overwrite
-        # the changes of an earlier window (WI-0079).
+        # the changes of an earlier window.
         self._editor_windows: Dict[tuple, Any] = {}
         self._addon_rule_sections: Dict[str, Dict[str, Any]] = {}
         self._addon_spec_sections: Dict[str, Dict[str, Any]] = {}
@@ -978,7 +978,7 @@ class AddonsTab:
         """True (after telling the user) when the other kind of editor has this file open.
 
         The general text editor writes the whole file and a rule-section editor writes one
-        section of it, so whichever Save came last would undo the other's change (WI-0104).
+        section of it, so whichever Save came last would undo the other's change.
         Two sections of one file do not conflict: each Save re-reads the file.
         """
         resolved, category = key

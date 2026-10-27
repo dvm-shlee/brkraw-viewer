@@ -65,15 +65,15 @@ by extensions; they are not a versioned API:
     (`None` waits without limit) and `ValueError` without a ROI. If the ROI is replaced while
     waiting it returns the new ROI's answer; if it is cleared it raises `ValueError`.
 
-  The Viewer tab's ROI tool (Off / Square / Circle, see the user guide) calls the same
-  `set_roi` on release and `clear_roi` on Esc or tool off; the overlay follows the
+  The Viewer tab's ROI tool box (Selection mode with Square / Circle, see the user guide) calls the same
+  `set_roi` on release and `clear_roi` on Esc; the overlay follows the
   controller, so a ROI set from Python is drawn on the view of its axis too. A drag
   gives `"rect"` `(u0, u1, v0, v1)` or, for the circle tool, `"ellipse"` `(cu, cv, r, r)`.
 
   Only one ROI exists and it is never saved. It is cleared when the dataset, scan,
   reco, converter hook or its options, slicepack, flip or the shown slice on its
   axis changes; an answer for an earlier ROI or state is dropped.
-- Layers (**provisional**, office#23; may change until its tests have run in real use):
+- Layers (**provisional**; may change until its tests have run in real use):
   - `app.layers_api.list_layers()`: list of read-only `LayerInfo` (`id`, `name`, `kind`,
     `source`, `space`, `shape`, `affine`, `dtype`, `frames`, `visible`, `alpha`, `cmap`),
     the base layer first. No voxel data.

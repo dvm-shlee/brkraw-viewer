@@ -198,10 +198,10 @@ class ViewportCanvas(ttk.Frame):
         self._last_res: Tuple[float, float] = (1.0, 1.0)
         self._last_overlay: Optional[OverlaySpec] = None
         # Display window (vmin, vmax) of the base, computed by the caller once per frame
-        # (layer core C5). None falls back to the slice's own 1-99 percentiles.
+        # None falls back to the slice's own 1-99 percentiles.
         self._last_window: Optional[Tuple[float, float]] = None
         # Layers drawn over the base, bottom to top: (rgb float (H, W, 3), alpha (H, W)) from
-        # the layer core (C4), already sampled on this slice by the controller (C3).
+        # the layer core, already sampled on this slice by the controller.
         self._last_layers: List[Tuple[np.ndarray, np.ndarray]] = []
         self._show_crosshair: bool = False
         self._crosshair_rc: Optional[Tuple[int, int]] = None
@@ -805,7 +805,7 @@ class ViewportCanvas(ttk.Frame):
         if np.iscomplexobj(base):
             base = np.abs(base)
 
-        # Render base -> RGB uint8, then the layers over it (C4)
+        # Render base -> RGB uint8, then the layers over it
         base_rgb = self._base_to_rgb(base, self._last_window)
         base_rgb = self._composite_layers(base_rgb, self._last_layers)
 
@@ -975,7 +975,7 @@ class ViewportCanvas(ttk.Frame):
         img = np.asarray(base)
         if np.iscomplexobj(img):
             img = np.abs(img)
-        # C5: the caller's frame-wide window; without one (older callers) the slice's own.
+        # the caller's frame-wide window; without one (older callers) the slice's own.
         win = normalize_window(window)
         if win is None:
             win = default_window(img)
@@ -984,7 +984,7 @@ class ViewportCanvas(ttk.Frame):
 
     @staticmethod
     def _composite_layers(base_rgb: np.ndarray, layers: List[Tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
-        """Straight-alpha "over" of the layers on the base (C4); a layer whose shape does not
+        """Straight-alpha "over" of the layers on the base; a layer whose shape does not
         match this slice is skipped rather than drawn misaligned."""
         h, w = base_rgb.shape[0], base_rgb.shape[1]
         usable = [(rgb, a) for rgb, a in layers if np.shape(rgb) == (h, w, 3) and np.shape(a) == (h, w)]

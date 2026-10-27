@@ -1,4 +1,4 @@
-"""ROI masks and statistics on one display slice (WI-0072, contract C6)."""
+"""ROI masks and statistics on one display slice."""
 
 import math
 from typing import Tuple, Dict, Any, Optional, Sequence

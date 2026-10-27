@@ -30,12 +30,12 @@ def read_shared_array(name: str, shape: Tuple[int, ...], dtype: str) -> Tuple[np
 
 
 def map_shared_array(name: str, shape: Tuple[int, ...], dtype: str) -> np.ndarray:
-    """The block as an array that uses the shared memory itself, not a copy (layer core C9).
+    """The block as an array that uses the shared memory itself, not a copy.
 
     The block's name is removed at once, so nothing is left behind if the program stops;
     the memory stays mapped for as long as the returned array (or any view of it) lives
     and is freed with it. Before this, the main process copied the block, so for a moment
-    it held the frame twice (WI-0010 contract C9).
+    it held the frame twice.
 
     This hands the mapping from ``SharedMemory`` to the array. If this Python's
     ``SharedMemory`` does not have the expected parts, it falls back to one copy (the old

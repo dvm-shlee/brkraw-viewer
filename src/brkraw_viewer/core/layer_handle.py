@@ -1,10 +1,9 @@
-"""Tk-free layer handle over LayerStack and the layer data dict (WI-0067, stage 4 item 1).
+"""Tk-free layer handle over LayerStack and the layer data dict.
 
-Implements the note design-stage4-handle.md (Surface, Errors, Copy vs view). Director
-answers (office#23): Q2 B add_overlay copies by default (copy=True) and can hold the
-caller's array (copy=False); Q3 B get_overlay_array returns a copy or a read-only view;
-Q4 A a separate handle object; Q5 A an overlay in another space or grid is refused,
-never resampled. The API is provisional until tested. The main-thread guard is a later
+add_overlay copies by default (copy=True) and can hold the caller's array
+(copy=False); get_overlay_array returns a copy or a read-only view; the handle is a
+separate object; an overlay in another space or grid is refused, never resampled.
+The API is provisional until tested. The main-thread guard is a later
 item and is not here. Layer construction mirrors the controller's
 ``_add_array_layer`` without importing it.
 """

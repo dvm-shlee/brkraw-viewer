@@ -1,4 +1,4 @@
-"""T7 memory tests (contract v0.1 C9, WI-0072): one copy per data, no second copy in main,
+"""T7 memory tests: one copy per data, no second copy in main,
 release on layer change, total budget, hook-reported size. Synthetic data, no Tk window.
 
 tracemalloc sees numpy allocations but not shared-memory mappings, so these tests measure
@@ -105,7 +105,7 @@ def test_main_does_not_copy_the_frame_when_a_volume_arrives(monkeypatch, tmp_pat
 
 
 def test_map_shared_array_fallback_copies_once_and_still_removes_the_name(monkeypatch):
-    # wi-0072-choi-1 finding 7: the branch for a Python whose SharedMemory lacks the parts
+    # the branch for a Python whose SharedMemory lacks the parts
     from brkraw_viewer.app.workers import shm as shm_module
 
     real = shared_memory.SharedMemory
@@ -130,7 +130,7 @@ def test_map_shared_array_fallback_copies_once_and_still_removes_the_name(monkey
 
 
 def test_main_keeps_only_small_recent_frames_besides_the_shown_one(monkeypatch, tmp_path):
-    # wi-0072-choi-1 finding 6: the WI-0068 frame cache is bounded by bytes, not only by count
+    # the frame cache is bounded by bytes, not only by count
     monkeypatch.setattr(viewer_module, "load_viewer_config", lambda root=None: viewer_config.default_viewer_config())
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     ctrl = ViewerController()
@@ -148,7 +148,7 @@ def test_main_keeps_only_small_recent_frames_besides_the_shown_one(monkeypatch, 
     small = (8, 8, 4, 1)  # 1 KiB
     for i in range(10):
         arrive(i, small)
-    assert list(ctrl._frame_cache) == list(range(2, 10))  # count limit 8, as in WI-0068
+    assert list(ctrl._frame_cache) == list(range(2, 10))  # count limit 8
     ctrl._frame_cache.clear()
     ctrl._frame_cache_bytes_limit = 1 * MB
     big = (64, 64, 32, 1)  # 0.5 MiB

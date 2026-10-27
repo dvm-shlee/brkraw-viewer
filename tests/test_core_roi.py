@@ -1,4 +1,4 @@
-"""T4 ROI tests (contract v0.1 C6, WI-0072). Tk-free."""
+"""T4 ROI tests. Tk-free."""
 from __future__ import annotations
 
 import math
@@ -90,7 +90,7 @@ def test_small_n_gives_nan_where_undefined():
 
 def test_volume_with_oblique_anisotropic_affine_and_outside_layer():
     # display grid D oblique and anisotropic; a layer covering only part of the slice:
-    # outside samples are NaN (C3) and count in n_nan, not in n or volume_mm3.
+    # outside samples are NaN and count in n_nan, not in n or volume_mm3.
     c, s_ = math.cos(0.3), math.sin(0.3)
     a_d = np.array([[0.2 * c, -0.35 * s_, 0, 1.0], [0.2 * s_, 0.35 * c, 0, -2.0], [0, 0, 0.7, 0.5], [0, 0, 0, 1]])
     voxel = abs(np.linalg.det(a_d[:3, :3]))
@@ -106,7 +106,7 @@ def test_volume_with_oblique_anisotropic_affine_and_outside_layer():
     assert st["mean"] == pytest.approx(layer[:, :, 1].mean())
 
 
-# roi_mask: one entry point for rect/ellipse, clipped to the display slice (WI-0004).
+# roi_mask: one entry point for rect/ellipse, clipped to the display slice.
 
 def _brute_ellipse(shape, cu, cv, ru, rv):
     u, v = np.meshgrid(np.arange(shape[0]), np.arange(shape[1]), indexing="ij")

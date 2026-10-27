@@ -1,4 +1,4 @@
-"""Ordered layer list with change events (WI-0072, contract C2)."""
+"""Ordered layer list with change events."""
 
 from dataclasses import dataclass, field, replace
 from typing import Tuple, Optional, Dict, Any, List, Callable

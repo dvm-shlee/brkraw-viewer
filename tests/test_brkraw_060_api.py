@@ -1,4 +1,4 @@
-"""Synthetic tests for the brkraw 0.6 API calls the viewer uses (WI-0067, no Tk window, no real dataset)."""
+"""Synthetic tests for the brkraw 0.6 API calls the viewer uses (no Tk window, no real dataset)."""
 
 from types import SimpleNamespace
 

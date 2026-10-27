@@ -29,12 +29,12 @@ def default_viewer_config() -> Dict[str, Any]:
         "cache": {
             # Ask (a warning with continue / cancel) before a load that would make the data held
             # for all layers larger than this. "auto" (also when the key is missing) = 16 % of
-            # the installed memory, at least 512 MB (D-0169, WI-0104 item 8); a number is in MB
+            # the installed memory, at least 512 MB; a number is in MB
             # and wins, also when an older config still holds the old 1536; 0 = never ask.
             "memory_limit_mb": "auto",
             # With a converter hook on: ask when the hook's reconstruction peak (plus what the
             # viewer holds for other data) would pass this percent of the installed memory
-            # (D-0170, WI-0104 item 7); 0 = do not ask for the peak.
+            # 0 = do not ask for the peak.
             "hook_memory_percent": 25,
         },
         "registry": {
@@ -51,7 +51,7 @@ def resolve_cache_dir() -> Path:
     """Folder named by ``viewer.cache.path``; ``cache`` in the config folder when empty.
 
     Relative paths are taken from the BrkRaw config folder. The exit prompt uses this
-    folder (WI-0076); since WI-0072 the Timecourse no longer writes files here.
+    folder; the Timecourse no longer writes files here.
     """
     root = resolve_root(None)
     try:

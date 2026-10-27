@@ -1,7 +1,7 @@
-"""Controller binding of the layer handle: ViewerController.layers_api (WI-0075, stage 4 item 2).
+"""Controller binding of the layer handle: ViewerController.layers_api.
 
-Provisional API (office#23): it may change until it is tested in use. Main thread only: every
-method refuses a call from another thread. Design: docs/dev/design-stage4-handle.md.
+Provisional API: it may change until it is tested in use. Main thread only: every
+method refuses a call from another thread. Reference: docs/dev/hooks.md.
 The binding composes the core LayerHandle over the controller's own layer stack and layer
 data; it imports no Tk.
 """

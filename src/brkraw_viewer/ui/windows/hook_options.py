@@ -259,7 +259,7 @@ class HookOptionsDialog:
             return False
 
     def update(self, *, hook_name: str, hook_args: Optional[dict], on_apply) -> None:
-        """Point an existing window at the current hook, applied values and apply callback (WI-0078)."""
+        """Point an existing window at the current hook, applied values and apply callback."""
         if hook_name != self._hook_name:
             self._defaults = {}
         self._hook_name = hook_name
@@ -269,7 +269,7 @@ class HookOptionsDialog:
         self._vars = {}
 
     def refresh(self, *, hook_name: str, hook_args: Optional[dict]) -> None:
-        """Show values applied elsewhere (the other tab) in this open window (WI-0104).
+        """Show values applied elsewhere (the other tab) in this open window.
 
         Does nothing when the window is for another hook, when the values are the ones it
         already holds (its own Apply echoed back, so a typed value is not lost), or before it
@@ -284,7 +284,7 @@ class HookOptionsDialog:
             self._render_form(self._preset, self._hints)
 
     def show(self) -> Optional[str]:
-        """Show the window. Returns None when shown, else the reason it cannot be shown (WI-0104)."""
+        """Show the window. Returns None when shown, else the reason it cannot be shown."""
         name = (self._hook_name or "").strip()
         if not name or name in ("None", "Disabled"):
             return "This scan has no converter hook, so there are no hook options."
@@ -443,7 +443,7 @@ def show_hook_options(owner: Any, parent: tk.Misc, *, hook_name: str, hook_args:
 
     The window is kept on ``owner._hook_options_dialog``. Pressing the button again brings the
     existing window forward (or shows it again after Close); a window closed with the window
-    button is created anew. WI-0078: each press used to create a new window.
+    button is created anew. Each press used to create a new window.
     """
     dialog = getattr(owner, "_hook_options_dialog", None)
     if dialog is not None and dialog.is_open():
@@ -469,7 +469,7 @@ def refresh_open_dialog(owner: Any, hook_name: str, hook_args: Optional[dict]) -
 
 
 def notify(parent: Any, text: str) -> None:
-    """Tell the user why the options window did not open; never raises (WI-0104)."""
+    """Tell the user why the options window did not open; never raises."""
     try:
         messagebox.showinfo("Hook Options", text, parent=parent.winfo_toplevel())
     except Exception:

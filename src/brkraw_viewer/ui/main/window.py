@@ -167,7 +167,7 @@ class MainWindow(ttk.Frame):
         try:
             if self._task_window is not None and self._task_window.winfo_exists():
                 # One progress window: bring the open one forward and hand it back, so the
-                # caller finishes the window that is on screen (WI-0104; a second window used
+                # caller finishes the window that is on screen (a second window used
                 # to be created and the first lost).
                 try:
                     self._task_window.lift()
@@ -479,7 +479,7 @@ class MainWindow(ttk.Frame):
         """Warn that the data held would go over the memory limit; Yes continues, No cancels.
 
         ``message`` is the full text from the controller (sizes, the limit and where it comes
-        from, WI-0104 item 8); without it the short text of earlier versions is shown.
+        from); without it the short text of earlier versions is shown.
         """
         text = message or (
             f"With this scan the viewer would hold about {estimated_mb:,.0f} MB, over the "

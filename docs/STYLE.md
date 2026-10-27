@@ -5,16 +5,12 @@ future work follows them consistently.
 
 ## Tests
 
-- New test files are named `tests/test_mkj_wiNNNN_<topic>.py`, where `mkj` is
-  the company prefix, `NNNN` is the four-digit work item id, and `<topic>` is
-  a short snake_case description (for example `test_mkj_wi0008_example.py`).
-- Tests written by the old team, named `tests/test_wiNNNN_*`, keep their names.
-- This company's earlier tests `tests/test_wi0002_roi_tool.py` and
-  `tests/test_wi0005_roi_timecourse.py` were renamed to
-  `tests/test_mkj_wi0002_roi_tool.py` and
-  `tests/test_mkj_wi0005_roi_timecourse.py` on 2026-10-16.
-
-This rule was accepted by the Director on 2026-10-15.
+- New test files are named `tests/test_<topic>.py` (a short snake_case topic).
+- Tests that need the real dataset carry the `realdata` marker. The default run
+  deselects them (`-m "not realdata"` in `addopts`); deselection by marker is
+  not a skip: they never skip, and an explicit `-m realdata` run without the
+  data fails. Every pre-push or release sweep runs `-m realdata` with the data
+  variables set and reports how many ran.
 
 ## Layout
 
@@ -23,14 +19,10 @@ This rule was accepted by the Director on 2026-10-15.
   runs never import Tk. Example: `core/roi.py` computes masks and
   `ui/roi_tool.py` only wires widgets to it.
 
-Adopted 2026-10-16 (office#7).
-
 ## Docstrings
 
-- Module docstrings cite the work item and the contract ids they implement.
-  Example: `"""ROI tool core (WI-0002, contract C-ROI-1)."""`
-
-Adopted 2026-10-16 (office#7).
+- Module docstrings say what the module does; no internal ticket or decision ids.
+  Example: `"""ROI masks and statistics on one display slice."""`
 
 ## Errors
 
@@ -38,11 +30,7 @@ Adopted 2026-10-16 (office#7).
   expected values. Example:
   `ValueError("mode: got 'blur', expected one of ['mean', 'max']")`.
 
-Adopted 2026-10-16 (office#7).
-
 ## GUI code and tests
-
-Observed practice from 2026-10-19 (WI-0020..WI-0029):
 
 - Every Tk variable and `PhotoImage` gets an explicit `master` (its own
   widget or root); never rely on the default root. Example:
@@ -56,5 +44,3 @@ Observed practice from 2026-10-19 (WI-0020..WI-0029):
 - GUI tests run in a real Tk window under a virtual display (Xvfb) with
   `BRKRAW_VIEWER_SMOKE=1`; see [Running the GUI tests](dev/gui.md).
   Example: `BRKRAW_VIEWER_SMOKE=1 xvfb-run -a <test command>`.
-
-Adopted 2026-10-20 (office#21, Director).

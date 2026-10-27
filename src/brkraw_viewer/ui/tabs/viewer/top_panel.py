@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from brkraw_viewer.ui.tabs.viewer.roi_tool_box import RoiToolBox
 from brkraw_viewer.ui.windows.hook_options import refresh_open_dialog, show_hook_options
 
 
@@ -14,16 +15,20 @@ class ViewerTopPanel(ttk.Frame):
         self.grid_propagate(False)
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=0)
-        self.columnconfigure(2, weight=1)
+        self.columnconfigure(2, weight=0)
+        self.columnconfigure(3, weight=1)
 
         left_container = ttk.Frame(self, width=300)
         left_container.grid(row=0, column=0, sticky="n", padx=(0, 8))
         left_container.grid_propagate(False)
+        tool_container = ttk.Frame(self, width=260)
+        tool_container.grid(row=0, column=1, sticky="n", padx=(8, 8))
+        tool_container.grid_propagate(False)
         mid_container = ttk.Frame(self, width=240)
-        mid_container.grid(row=0, column=1, sticky="n", padx=(8, 8))
+        mid_container.grid(row=0, column=2, sticky="n", padx=(8, 8))
         mid_container.grid_propagate(False)
         right_container = ttk.Frame(self, width=240)
-        right_container.grid(row=0, column=2, sticky="n", padx=(8, 0))
+        right_container.grid(row=0, column=3, sticky="n", padx=(8, 0))
         right_container.grid_propagate(False)
 
         left = ttk.Frame(left_container)
@@ -113,6 +118,12 @@ class ViewerTopPanel(ttk.Frame):
             variable=self._flip_z_var,
             command=lambda: self._on_flip(callbacks, "z"),
         ).pack(side=tk.LEFT)
+
+        tool = ttk.Frame(tool_container)
+        tool.place(relx=0.5, rely=0.0, anchor="n", width=260)
+        tool.columnconfigure(0, weight=1)
+        self.tool_box = RoiToolBox(tool, callbacks=callbacks)
+        self.tool_box.grid(row=0, column=0, sticky="nsew")
 
         mid = ttk.Frame(mid_container)
         mid.place(relx=0.5, rely=0.0, anchor="n", width=240)
@@ -212,30 +223,38 @@ class ViewerTopPanel(ttk.Frame):
             width = max(self.winfo_width(), 1)
             
             w_left = max(left.winfo_reqwidth(), 10)
+            w_tool = max(tool.winfo_reqwidth(), 10)
             w_mid = max(mid.winfo_reqwidth(), 10)
             w_right = max(right.winfo_reqwidth(), 10)
             gap = 12
             
-            total_req = w_left + w_mid + w_right + (gap * 2)
+            total_req = w_left + w_tool + w_mid + w_right + (gap * 3)
             start_x = max(0, (width - total_req) // 2)
             
             left_container.grid_forget()
+            tool_container.grid_forget()
             mid_container.grid_forget()
             right_container.grid_forget()
             
             x = start_x
             
             h_left = max(left.winfo_reqheight(), 1)
+            h_tool = max(tool.winfo_reqheight(), 1)
             h_mid = max(mid.winfo_reqheight(), 1)
             h_right = max(right.winfo_reqheight(), 1)
             
-            max_h = max(h_left, h_mid, h_right)
+            max_h = max(h_left, h_tool, h_mid, h_right)
             
             left_container.place(x=x, y=0, width=w_left, height=max_h)
             y_left = (max_h - h_left) // 2
             left.place(x=0, y=y_left, width=w_left, height=h_left)
             x += w_left + gap
             
+            tool_container.place(x=x, y=0, width=w_tool, height=max_h)
+            y_tool = (max_h - h_tool) // 2
+            tool.place(x=0, y=y_tool, width=w_tool, height=h_tool)
+            x += w_tool + gap
+
             mid_container.place(x=x, y=0, width=w_mid, height=max_h)
             y_mid = (max_h - h_mid) // 2
             mid.place(x=0, y=y_mid, width=w_mid, height=h_mid)

@@ -1,4 +1,4 @@
-"""Grids and on-demand slice resampling (layer core contract C1 and C3, WI-0072).
+"""Grids and on-demand slice resampling.
 
 A layer's grid is ``(shape[:3], A)``: ``A`` maps voxel index -> world mm in one named
 space, integer indices are voxel centres. The display grid ``D = (S_D, A_D)`` is the base
@@ -23,7 +23,7 @@ INTERPOLATIONS = ("linear", "nearest")
 
 
 class SpaceMismatchError(ValueError):
-    """A layer is in another coordinate space than the base (no silent conversion, C1)."""
+    """A layer is in another coordinate space than the base (no silent conversion)."""
 
 
 @dataclass(frozen=True)
@@ -63,7 +63,7 @@ def display_to_layer_matrix(display_affine: np.ndarray, layer_affine: np.ndarray
 
 
 def grid_matrix(display: Grid, layer: Grid) -> np.ndarray:
-    """``M`` for a layer on the display grid; refuses a layer in another space (C1)."""
+    """``M`` for a layer on the display grid; refuses a layer in another space."""
     if display.space != layer.space:
         raise SpaceMismatchError(
             f"layer is in space {layer.space!r} but the display is in {display.space!r}; "
@@ -184,7 +184,7 @@ def sample_slice(
     fill: Optional[object] = None,
     fast: bool = True,
 ) -> np.ndarray:
-    """One display slice of a 3D layer volume (C3).
+    """One display slice of a 3D layer volume.
 
     ``interpolation``: ``"linear"`` (images, float64, default fill NaN) or ``"nearest"``
     (labels, default fill 0, dtype kept). When ``M`` is a signed permutation with integer

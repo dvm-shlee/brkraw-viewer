@@ -4,13 +4,13 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional
 
-from brkraw_viewer.core.roi import ROI_TOOLS, RoiDrag, plane_axis
+from brkraw_viewer.core.roi import RoiDrag, plane_axis
 from brkraw_viewer.ui.components.viewport import ViewportCanvas
-from brkraw_viewer.ui.tabs.viewer.paint_tool import PaintTool
+from brkraw_viewer.ui.tabs.viewer.roi_tool_box import RoiToolBox
 
 
 class ViewerRightPanel(ttk.Frame):
-    def __init__(self, parent: tk.Misc, *, callbacks) -> None:
+    def __init__(self, parent: tk.Misc, *, callbacks, tool_box: Optional[RoiToolBox] = None) -> None:
         super().__init__(parent)
         self._callbacks = callbacks
         self._resize_job: Optional[str] = None
@@ -23,8 +23,6 @@ class ViewerRightPanel(ttk.Frame):
         axis_bar.columnconfigure(0, weight=1)
         axis_bar.columnconfigure(1, weight=1)
         axis_bar.columnconfigure(2, weight=1)
-        axis_bar.columnconfigure(3, weight=0)
-        axis_bar.columnconfigure(4, weight=0)
 
         def _axis_box(parent: tk.Misc, axis: str, var: tk.IntVar, on_change, column: int):
             pad_x = (0, 6) if column < 2 else (0, 0)
@@ -68,25 +66,15 @@ class ViewerRightPanel(ttk.Frame):
         self._z_scale = _axis_box(axis_bar, "Z", self._z_var, lambda v: self._on_axis(callbacks, "z", v), 1)
         self._x_scale = _axis_box(axis_bar, "X", self._x_var, lambda v: self._on_axis(callbacks, "x", v), 2)
 
-        # ROI tool: off / square / circle. Drag on a view draws the shape, release sets the ROI.
+        # The ROI tool box lives in the top row (the tab passes it in); it decides who owns the mouse:
+        # Crosshair, Selection (square / circle ROI drag, one shot) or Drawing (left paints, right erases).
         self._roi_drag = RoiDrag()
         self._roi_previewed = False
-        self._roi_tool_var = tk.StringVar(master=self, value="off")  # this window's root (WI-0022)
-        roi_box = ttk.Frame(axis_bar)
-        roi_box.grid(row=0, column=3, sticky="n", padx=(6, 4), pady=4)
-        ttk.Label(roi_box, text="ROI").pack(side=tk.LEFT, padx=(0, 4))
-        for tool in ROI_TOOLS:
-            ttk.Radiobutton(
-                roi_box,
-                text=tool.capitalize(),
-                value=tool,
-                variable=self._roi_tool_var,
-                command=self._on_roi_tool,
-            ).pack(side=tk.LEFT, padx=(0, 2))
-
-        # Paint tool (WI-0053): next to the ROI box; paint and ROI never act at the same time.
-        self._paint = PaintTool(axis_bar, callbacks=callbacks, master=self, on_activate=self._on_paint_tool)
-        self._paint.frame.grid(row=0, column=4, sticky="n", padx=(6, 0), pady=4)
+        self._roi_tool_var = tk.StringVar(master=self, value="off")  # the drag tool in effect; this window's root
+        self._stroke_button: Optional[int] = None
+        self._tool_box = tool_box if tool_box is not None else RoiToolBox(self, callbacks=callbacks)
+        self._paint = self._tool_box.paint
+        self._tool_box.set_listener(self._on_tool_mode)
 
         viewer_host = ttk.Frame(self)
         viewer_host.grid(row=1, column=0, sticky="nsew")
@@ -119,9 +107,16 @@ class ViewerRightPanel(ttk.Frame):
 
         self._views = {"xz": self._xz, "xy": self._xy, "zy": self._zy}
         for plane, vp in self._views.items():
-            vp.bind_canvas("<ButtonPress-1>", lambda e, p=plane: self._on_tool_press(p, e))
-            vp.bind_canvas("<B1-Motion>", lambda e, p=plane: self._on_tool_move(p, e))
-            vp.bind_canvas("<ButtonRelease-1>", lambda e, p=plane: self._on_tool_release(p, e))
+            vp.bind_canvas("<ButtonPress-1>", lambda e, p=plane: self._on_tool_press(p, e, 1))
+            vp.bind_canvas("<B1-Motion>", lambda e, p=plane: self._on_tool_move(p, e, 1))
+            vp.bind_canvas("<ButtonRelease-1>", lambda e, p=plane: self._on_tool_release(p, e, 1))
+            erase_buttons = [3]
+            if self.tk.call("tk", "windowingsystem") == "aqua":
+                erase_buttons.append(2)  # the right button is Button-2 on macOS
+            for n in erase_buttons:
+                vp.bind_canvas(f"<ButtonPress-{n}>", lambda e, p=plane, n=n: self._on_tool_press(p, e, n))
+                vp.bind_canvas(f"<B{n}-Motion>", lambda e, p=plane, n=n: self._on_tool_move(p, e, n))
+                vp.bind_canvas(f"<ButtonRelease-{n}>", lambda e, p=plane, n=n: self._on_tool_release(p, e, n))
             vp.bind_canvas("<Escape>", lambda _e: self._on_tool_escape())
             vp.bind_canvas("<Control-z>", lambda _e: self._paint.undo())
 
@@ -244,53 +239,64 @@ class ViewerRightPanel(ttk.Frame):
 
     # ----- ROI tool -----
 
-    def _on_roi_tool(self) -> None:
-        tool = self._roi_tool_var.get()
+    def _on_tool_mode(self) -> None:
+        """The box changed mode or shape: one tool owns the mouse at a time."""
+        mode = self._tool_box.mode
+        tool = self._tool_box.shape if mode == "selection" else "off"
+        if mode != "selection" and self._roi_drag.dragging:
+            self._on_roi_escape()  # leaving Selection clears a drag in progress
+        if mode != "drawing":
+            self._stroke_button = None  # the box already ended any stroke
         self._roi_drag.set_tool(tool)
-        if tool != "off" and self._paint.active:
-            self._paint.set_off()  # one tool at a time
-        self._sync_click_enabled()
-        if tool == "off":
-            self._clear_roi()
-
-    def _on_paint_tool(self) -> None:
-        if self._paint.active and self._roi_tool_var.get() != "off":
-            self._roi_tool_var.set("off")  # one tool at a time
-            self._on_roi_tool()
+        self._roi_tool_var.set(tool)
         self._sync_click_enabled()
 
     def _sync_click_enabled(self) -> None:
-        free = self._roi_tool_var.get() == "off" and not self._paint.active
+        free = self._tool_box.mode == "crosshair"
         for vp in self._views.values():
-            vp.set_click_enabled(free)  # voxel click only while no drawing tool owns the button
+            vp.set_click_enabled(free)  # voxel click only while no tool owns the button
 
-    def _on_tool_press(self, plane: str, event) -> None:
-        if not self._paint.active:
-            self._on_roi_press(plane, event)
+    def _on_tool_press(self, plane: str, event, button: int = 1) -> None:
+        mode = self._tool_box.mode
+        if mode == "selection":
+            if button == 1:
+                self._on_roi_press(plane, event)
+            return
+        if mode != "drawing" or self._stroke_button is not None:
             return
         rc = self._roi_rc(plane, event)
-        if rc is not None and self._paint.press(plane, rc[0], rc[1]):
+        if rc is not None and self._paint.press(plane, rc[0], rc[1], erase=button != 1):
+            self._stroke_button = button
             try:
                 self._views[plane]._canvas.focus_set()  # Ctrl+Z and Esc go to this view
             except Exception:
                 pass
 
-    def _on_tool_move(self, plane: str, event) -> None:
-        if not self._paint.active:
-            self._on_roi_move(plane, event)
+    def _on_tool_move(self, plane: str, event, button: int = 1) -> None:
+        mode = self._tool_box.mode
+        if mode == "selection":
+            if button == 1:
+                self._on_roi_move(plane, event)
+            return
+        if mode != "drawing" or self._stroke_button != button:
             return
         rc = self._roi_rc(plane, event)
         if rc is not None:
             self._paint.move(plane, rc[0], rc[1])
 
-    def _on_tool_release(self, plane: str, event) -> None:
-        if self._paint.active:
+    def _on_tool_release(self, plane: str, event, button: int = 1) -> None:
+        mode = self._tool_box.mode
+        if mode == "selection":
+            if button == 1:
+                self._on_roi_release(plane, event)
+            return
+        if mode == "drawing" and self._stroke_button == button:
+            self._stroke_button = None
             self._paint.release()
-        else:
-            self._on_roi_release(plane, event)
 
     def _on_tool_escape(self) -> None:
-        if self._paint.active:
+        if self._tool_box.mode == "drawing":
+            self._stroke_button = None
             self._paint.cancel()
         else:
             self._on_roi_escape()
@@ -337,6 +343,7 @@ class ViewerRightPanel(ttk.Frame):
         handler = getattr(self._callbacks, "on_viewer_roi_set", None)
         if callable(handler):
             handler(shape, geometry, axis)
+        self._tool_box.set_mode("crosshair")  # Selection is one-shot; the ROI stays shown
 
     def _on_roi_escape(self) -> None:
         self._roi_drag.cancel()
@@ -499,7 +506,7 @@ class ViewerRightPanel(ttk.Frame):
         layers: dict | None = None,
     ) -> None:
         self._last_indices = indices
-        self._paint.refresh()  # the selected layer or its undo state may have changed
+        self._tool_box.refresh()  # the selected layer or its undo state may have changed
         layers = layers or {}
         if not views:
             self._xz.clear()

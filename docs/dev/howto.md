@@ -1,38 +1,38 @@
-# Viewer Hook 개발 How-To
+# Viewer Hook Development How-To
 
-이 문서는 `brkraw-viewer`에서 hook/extension을 개발할 때,
-특히 viewport에 overlay/colormap 같은 시각화 제어를 넣는 실전 방법을 정리합니다.
+This page describes how to develop hooks and extensions for `brkraw-viewer`, in particular how to add
+visualization controls such as overlays and colormaps to a viewport.
 
-현재 구조 기준으로 가장 중요한 결론은 아래 2가지입니다.
+Given the current structure, the two most important points are:
 
-1. 공식 인터페이스만으로 `Viewer` 탭의 기존 viewport를 직접 제어하는 API는 없습니다.
-2. 안정적으로 개발하려면 `Extensions` 탭 안에서 자체 viewport(`ViewportCanvas`)를 만들고 제어하는 방식이 권장됩니다.
+1. The official interface has no API that controls the existing viewport of the `Viewer` tab directly.
+2. For stable development, create and control your own viewport (`ViewportCanvas`) inside the `Extensions` tab.
 
-1~5절은 현재 코드 기준입니다. 6절은 아직 구현되지 않은 설계 제안(초안)이며, 현재 버전에는 `app.viewer_api`도
-`on_viewer_ready`/`on_viewer_invalidated` 호출도 없습니다.
+Sections 1 to 5 describe the current code. Section 6 is a design proposal (draft) that is not implemented yet:
+the current version has neither `app.viewer_api` nor the `on_viewer_ready` / `on_viewer_invalidated` calls.
 
-## 1) 현재 hook이 할 수 있는 범위
+## 1) What a hook can do today
 
-`brkraw.viewer.hook` entry point로 로드된 hook은 기본적으로 `build_tab(parent, app)`로
-Extensions 탭에 UI를 추가합니다.
+A hook loaded through the `brkraw.viewer.hook` entry point adds its UI to the Extensions tab through
+`build_tab(parent, app)`.
 
-`app`은 런타임에서 `ViewerController` 인스턴스이며, 주로 아래 콜백/상태를 통해 연동합니다.
+`app` is the `ViewerController` instance at runtime. The main callbacks and state to integrate with are:
 
-- `app.on_viewer_jump(x, y, z)`: 코어 Viewer 좌표 이동
-- `app.on_viewer_space_change(value)`: space 변경
-- `app.register_viewer_space_listener(cb)`: space 변경 구독
-- `app.state.dataset.selected_scan_id`, `app.state.dataset.selected_reco_id`: 현재 선택 상태
-- `app.dataset.get_scan(scan_id)`: scan 접근
+- `app.on_viewer_jump(x, y, z)`: move the core Viewer position
+- `app.on_viewer_space_change(value)`: change the space
+- `app.register_viewer_space_listener(cb)`: subscribe to space changes
+- `app.state.dataset.selected_scan_id`, `app.state.dataset.selected_reco_id`: the current selection
+- `app.dataset.get_scan(scan_id)`: access a scan
 
-참고 파일:
+Related files:
 
 - `brkraw-viewer/src/brkraw_viewer/ui/tabs/extensions/window.py`
 - `brkraw-viewer/src/brkraw_viewer/app/protocols.py`
 - `brkraw-viewer/src/brkraw_viewer/app/controller/viewer.py`
 
-## 2) 권장 패턴: Extensions 탭에서 자체 viewport 제어
+## 2) Recommended pattern: own viewport in the Extensions tab
 
-overlay/colormap/색상바를 안정적으로 다루려면, extension UI 안에서 `ViewportCanvas`를 직접 사용하세요.
+To handle overlays, colormaps and colorbars reliably, use `ViewportCanvas` directly inside the extension UI.
 
 ```python
 import tkinter as tk
@@ -84,35 +84,36 @@ class MyExtensionPanel(ttk.Frame):
         )
 ```
 
-핵심 포인트:
+Key points:
 
-- `OverlaySpec`로 LUT + alpha + mask + vmin/vmax 제어 가능
-- `show_colorbar=True`로 우측 colorbar 표시 가능
-- `set_overlay_rgba(...)`를 쓰면 parametric overlay와 별개로 RGBA 레이어를 위에 추가할 수 있음
+- `OverlaySpec` controls the LUT, alpha, mask and vmin/vmax
+- `show_colorbar=True` shows a colorbar on the right
+- `set_overlay_rgba(...)` adds an RGBA layer on top, independent of the parametric overlay
 
-관련 파일:
+Related files:
 
 - `brkraw-viewer/src/brkraw_viewer/ui/components/viewport.py`
 - `brkraw-viewer/src/brkraw_viewer/ui/components/label_painter.py`
 
-## 3) 코어 Viewer 탭 viewport 직접 제어가 필요한 경우
+## 3) When you need to control the core Viewer tab viewport
 
-### 3-1. 현실적인 대안 (권장)
+### 3-1. Practical alternative (recommended)
 
-코어 Viewer 자체를 건드리지 않고, 데이터 레벨에서 hook을 적용해 결과를 Viewer로 보여주는 방식입니다.
+Leave the core Viewer alone and apply a hook at the data level, then show the result in the Viewer.
 
-- scan에 맞는 converter hook의 옵션(= `hook_args`, Viewer 탭 Hook 상자의 `Hook Options`)으로 `scan.get_dataobj(...)` 동작을 바꿔서 volume 값을 변환
-  (Viewer 탭의 `Hook`은 viewer hook이 아니라 converter hook을 적용합니다)
-- 필요하면 RGB 형태 데이터(마지막 축 3채널)를 반환해서 Viewer의 RGB 모드로 표시
+- Change what `scan.get_dataobj(...)` returns through the options of the converter hook that fits the scan
+  (`hook_args`, the `Hook Options` button of the Viewer tab's Hook box), so the volume values are transformed
+  (the `Hook` of the Viewer tab applies a converter hook, not a viewer hook)
+- If needed, return RGB data (3 channels on the last axis) and show it in the Viewer's RGB mode
 
-주의:
+Note:
 
-- 이 방식은 "overlay 레이어를 따로 올리는 기능"이 아니라, 이미지를 변환/치환하는 방식입니다.
+- This is not a way to add a separate overlay layer; it transforms or replaces the image.
 
-### 3-2. 내부 API 접근 (비권장, 깨지기 쉬움)
+### 3-2. Internal API access (not recommended, fragile)
 
-아래처럼 내부 위젯 트리를 타고 들어가면 코어 Viewer viewport 객체(`_xy`, `_xz`, `_zy`)를 가져올 수는 있습니다.
-하지만 private 필드에 의존하므로 구조 변경 시 쉽게 깨집니다.
+Walking the internal widget tree as below reaches the core Viewer viewport objects (`_xy`, `_xz`, `_zy`).
+It depends on private fields, so it breaks easily when the structure changes.
 
 ```python
 def get_core_viewport(app, plane: str):
@@ -136,12 +137,12 @@ def get_core_viewport(app, plane: str):
     return None
 ```
 
-실무 권장:
+In practice:
 
-- 연구/내부 실험 단계에서만 사용
-- 배포용 extension에서는 사용하지 않거나, 방어코드(`getattr`, `None` 체크) 필수
+- Use it only for research and internal experiments
+- Do not use it in a distributed extension, or guard it (`getattr`, `None` checks)
 
-## 4) extension skeleton (최소 형태)
+## 4) Extension skeleton (minimal)
 
 ```python
 from tkinter import ttk
@@ -168,37 +169,37 @@ class MyViewerHook:
 my-extension = "my_pkg.viewer_hook:MyViewerHook"
 ```
 
-## 5) 팀 내 가이드 요약
+## 5) Summary of the guidance
 
-1. 코어 Viewer 탭을 직접 제어하는 "공식 API"는 아직 없다.
-2. overlay/colormap은 Extensions 탭의 `ViewportCanvas`에서 구현하는 것을 기본 전략으로 한다.
-3. 코어 Viewer와 동기화가 필요하면 `app` 콜백(`on_viewer_jump`, space listener 등)으로 연결한다.
-4. 부득이하게 내부 필드 접근 시, private API 의존임을 코드/문서에 명시한다.
+1. There is no official API yet that controls the core Viewer tab directly.
+2. The default strategy for overlays and colormaps is to implement them in the `ViewportCanvas` of the Extensions tab.
+3. To stay in sync with the core Viewer, connect through `app` callbacks (`on_viewer_jump`, the space listener, ...).
+4. If you must touch internal fields, state in the code and the docs that it depends on a private API.
 
-## 6) 공식 API 추가 설계 제안 (Draft)
+## 6) Proposal: an official API (draft)
 
-이 섹션은 `Viewer` 탭 viewport를 extension/hook에서 안전하게 제어할 수 있도록
-"공식 API"를 추가하는 제안입니다. **계획 단계이며 현재 버전에는 구현되어 있지 않습니다**
-(아래 `viewer_api`, `on_viewer_ready`, `on_viewer_invalidated`는 코드에 없습니다).
+This section proposes an official API that lets an extension or hook control the `Viewer` tab viewport safely.
+**It is a proposal and is not implemented in the current version**
+(`viewer_api`, `on_viewer_ready` and `on_viewer_invalidated` below do not exist in the code).
 
-### 6-1. 목표
+### 6-1. Goals
 
-1. extension이 private 필드(`_view`, `_xy`, `_xz`, `_zy`)에 의존하지 않게 한다.
-2. overlay/colormap/annotation을 plane 단위(`xy`, `xz`, `zy`)로 제어할 수 있게 한다.
-3. detached tab/refresh/reload 상황에서도 안정적으로 동작하도록 lifecycle을 명시한다.
-4. 기존 extension이 깨지지 않도록 backward compatible하게 도입한다.
+1. Extensions no longer depend on private fields (`_view`, `_xy`, `_xz`, `_zy`).
+2. Overlays, colormaps and annotations can be controlled per plane (`xy`, `xz`, `zy`).
+3. The lifecycle is explicit, so it works across detached tabs, refresh and reload.
+4. It is introduced in a backward compatible way, so existing extensions keep working.
 
-### 6-2. 비목표
+### 6-2. Non-goals
 
-1. 초기 버전에서 전체 viewport 구현을 plugin이 교체하도록 허용하지 않는다.
-2. 초기 버전에서 렌더 파이프라인(zoom/fit/aspect) 자체를 외부에서 수정하게 하지 않는다.
+1. The first version does not let a plugin replace the whole viewport implementation.
+2. The first version does not let outside code change the render pipeline (zoom, fit, aspect) itself.
 
-### 6-3. 제안 API 표면
+### 6-3. Proposed API surface
 
-`ViewerController`에 "Viewer overlay service"를 노출한다.
+`ViewerController` exposes a "Viewer overlay service".
 
-- `app.viewer_api` (신규): extension에서 접근하는 공식 진입점
-- `app.viewer_api`는 아래처럼 최소 기능부터 제공
+- `app.viewer_api` (new): the official entry point for extensions
+- `app.viewer_api` starts with the minimum below
 
 ```python
 class ViewerOverlayAPI(Protocol):
@@ -222,46 +223,46 @@ class ViewerOverlayAPI(Protocol):
     def set_rgba_overlay(
         self,
         plane: str,
-        rgba: np.ndarray | None,     # (H, W, 4) uint8; None이면 제거
+        rgba: np.ndarray | None,     # (H, W, 4) uint8; None removes it
         *,
         owner: str = "default",
     ) -> None: ...
 
     def clear_overlay(
         self,
-        plane: str | None = None,    # None이면 전체 plane
+        plane: str | None = None,    # None means every plane
         *,
-        owner: str | None = None,    # None이면 전체 owner
+        owner: str | None = None,    # None means every owner
     ) -> None: ...
 
     def get_view_shape(self, plane: str) -> tuple[int, int] | None: ...
     def request_redraw(self) -> None: ...
 ```
 
-핵심 설계:
+Key design points:
 
-- `owner` 개념으로 extension별 overlay 충돌을 분리
-- 컨트롤러가 owner별 state를 관리하고 최종 합성은 UI 레이어에서 수행
-- 동일 owner가 재호출하면 replace, 다른 owner는 stacking 정책으로 병합
+- The `owner` concept keeps the overlays of different extensions from colliding
+- The controller keeps state per owner; the final compositing happens in the UI layer
+- The same owner calling again replaces its overlay; different owners are merged by a stacking policy
 
-### 6-4. 상태 관리 모델
+### 6-4. State model
 
-컨트롤러 내부에 다음 상태를 추가한다.
+The controller gets the following internal state.
 
 - `_viewer_plane_overlays: dict[str, dict[str, OverlayState]]`
-  - 1차 key: plane (`xy`, `xz`, `zy`)
-  - 2차 key: owner (`mrs`, `seg`, ...)
+  - first key: plane (`xy`, `xz`, `zy`)
+  - second key: owner (`mrs`, `seg`, ...)
   - value: `param_overlay`, `rgba_overlay`, `zindex`, `updated_at`
 
-초기 병합 정책:
+Initial merge policy:
 
-1. `param_overlay`는 owner당 1개 (마지막 호출 wins)
-2. `rgba_overlay`는 owner당 1개 (마지막 호출 wins)
-3. owner 간에는 등록 순서(or `zindex`) 기준으로 상단 합성
+1. One `param_overlay` per owner (the last call wins)
+2. One `rgba_overlay` per owner (the last call wins)
+3. Between owners, composite in registration order (or by `zindex`), later on top
 
-### 6-5. lifecycle 훅 (권장 추가)
+### 6-5. Lifecycle hooks (recommended addition)
 
-`brkraw.viewer.hook` 프로토콜 확장 제안:
+Proposed extension of the `brkraw.viewer.hook` protocol:
 
 ```python
 class ViewerHook(Protocol):
@@ -270,48 +271,48 @@ class ViewerHook(Protocol):
     def on_viewer_invalidated(self, app: Any, reason: str) -> None: ...
 ```
 
-의도:
+Intent:
 
-- `on_viewer_ready`: Viewer 탭 attach/detach/rebuild 이후 overlay 재등록 타이밍 제공
-- `on_viewer_invalidated`: dataset close, scan/reco 변경, tab rebuild 등에서 상태 정리
+- `on_viewer_ready`: tells the extension when to register its overlays again after the Viewer tab is attached, detached or rebuilt
+- `on_viewer_invalidated`: lets the extension clean up its state when the dataset closes, the scan or reco changes, or the tab is rebuilt
 
-### 6-6. 에러/검증 정책
+### 6-6. Error and validation policy
 
-1. shape mismatch는 `ValueError` 대신 warning + no-op 모드 선택 가능
-2. plane 문자열/array dtype은 API 진입점에서 강제 검증
-3. 실패 시 앱 전체 렌더를 막지 않고 해당 owner overlay만 drop
+1. A shape mismatch can be a warning plus a no-op instead of a `ValueError`, selectable by mode
+2. The plane string and array dtype are validated strictly at the API entry point
+3. A failure does not block the rendering of the whole app; only that owner's overlay is dropped
 
-권장 기본:
+Recommended defaults:
 
-- 개발 모드: strict (`raise`)
-- 배포 모드: tolerant (`warn + skip`)
+- Development mode: strict (`raise`)
+- Distribution mode: tolerant (`warn + skip`)
 
-### 6-7. 단계별 도입 계획
+### 6-7. Phased introduction
 
-1. Phase 1 (최소 API)
+1. Phase 1 (minimal API)
    - `viewer_api.set_param_overlay`, `set_rgba_overlay`, `clear_overlay`
-   - 내부 owner/plane state 저장 및 합성
-   - 문서 + 샘플 extension 추가
+   - Internal owner/plane state storage and compositing
+   - Documentation and a sample extension
 
 2. Phase 2 (lifecycle)
-   - `on_viewer_ready`, `on_viewer_invalidated` 도입
-   - detach/attach/refresh 시 재등록 예제 제공
+   - Introduce `on_viewer_ready` and `on_viewer_invalidated`
+   - Provide an example of registering again after detach, attach and refresh
 
-3. Phase 3 (고급)
-   - `zindex`, blending mode 확장
-   - 성능 옵션(throttle, partial update) 제공
+3. Phase 3 (advanced)
+   - Extend `zindex` and blending modes
+   - Provide performance options (throttle, partial update)
 
-### 6-8. 호환성 전략
+### 6-8. Compatibility strategy
 
-1. 기존 extension에는 영향 없음 (`viewer_api`는 optional capability)
-2. 공식 API가 없는 구버전 대응:
-   - extension에서 `hasattr(app, "viewer_api")` 체크 후 fallback
-3. private 접근 방식은 deprecate 경고만 두고 즉시 제거하지 않음
+1. Existing extensions are not affected (`viewer_api` is an optional capability)
+2. For older versions without the official API:
+   - the extension checks `hasattr(app, "viewer_api")` and falls back
+3. The private access route only gets a deprecation warning and is not removed at once
 
-### 6-9. 수용 기준 (Acceptance Criteria)
+### 6-9. Acceptance criteria
 
-1. extension에서 private 필드 접근 없이 코어 Viewer overlay 표시 가능
-2. 탭 detach/attach 후 overlay 자동 복구
-3. dataset 변경 시 stale overlay 잔상 없음
-4. 서로 다른 extension 2개가 동시에 overlay를 등록해도 충돌 없이 표시
-5. overlay API 실패가 코어 Viewer 렌더/조작을 중단시키지 않음
+1. An extension can show a core Viewer overlay without touching private fields
+2. Overlays recover automatically after a tab is detached and attached
+3. No stale overlay remains after the dataset changes
+4. Two different extensions can register overlays at the same time and both show without conflict
+5. A failure of the overlay API does not stop the core Viewer from rendering or responding

@@ -67,6 +67,10 @@ class MainWindow(ttk.Frame):
         )
         self.subject.pack(side="top", fill="x")
 
+        # Status bar: packed before the body so it is never the widget that loses space.
+        self.status = StatusBar(self, status_var=self._status_var, on_open_worker_log=self._open_worker_log)
+        self.status.pack(side="bottom", fill="x")
+
         # Body: left sidebar + right tabs
         body = ttk.Frame(self, padding=(10, 4, 10, 10))
         body.pack(side="top", fill="both", expand=True)
@@ -94,10 +98,6 @@ class MainWindow(ttk.Frame):
         paned.add(self.sidebar, weight=0)
         paned.add(self.tabs, weight=1)
 
-        # Status bar
-        self.status = StatusBar(self, status_var=self._status_var, on_open_worker_log=self._open_worker_log)
-        self.status.pack(side="bottom", fill="x")
-
     def _bind_close(self) -> None:
         root = self.winfo_toplevel()
         try:
@@ -116,39 +116,38 @@ class MainWindow(ttk.Frame):
         except Exception:
             pass
 
+    def _required_width(self) -> int:
+        """Width at which the five top-row boxes are fully visible (0 when unknown)."""
+        try:
+            top = self.tabs.get_tab("Viewer")._tab_instance.top  # type: ignore[attr-defined]
+            box_w = int(top.required_width())
+            chrome = int(self.winfo_toplevel().winfo_width()) - int(top.winfo_width())
+            if int(top.winfo_width()) <= 1 or chrome < 0:
+                chrome = int(self.sidebar.winfo_reqwidth()) + 60
+            return box_w + chrome
+        except Exception:
+            return 0
+
     def _finalize_geometry(self) -> None:
-        # Ensure the initial toplevel size can accommodate all children,
-        # so the status bar is not clipped on first show.
+        # Make the initial toplevel big enough for the top row and all children, but never larger
+        # than the usable screen area, so the status bar is not clipped on first show.
+        from brkraw_viewer.app.bootstrap import MIN_HEIGHT, MIN_WIDTH, center_on_current_monitor
+
         root = self.winfo_toplevel()
+
         def _apply() -> None:
             try:
                 root.update_idletasks()
-            except Exception:
-                return
-
-            req_w = int(max(self.winfo_reqwidth(), root.winfo_reqwidth()))
-            req_h = int(max(self.winfo_reqheight(), root.winfo_reqheight()))
-
-            try:
+                req_w = max(self._required_width(), MIN_WIDTH)
+                req_h = int(max(self.winfo_reqheight(), root.winfo_reqheight()))
                 cur_w = int(root.winfo_width())
                 cur_h = int(root.winfo_height())
+                root.minsize(req_w, MIN_HEIGHT)
+                center_on_current_monitor(
+                    root, width=max(cur_w, req_w), height=max(cur_h, req_h)
+                )
             except Exception:
-                cur_w, cur_h = req_w, req_h
-
-            root.minsize(1050, 600)
-
-            # Only adjust height to avoid clipping; don't lock width.
-            if cur_h < req_h:
-                new_h = max(cur_h, req_h)
-                try:
-                    x = int(root.winfo_x())
-                    y = int(root.winfo_y())
-                    root.geometry(f"{cur_w}x{new_h}+{x}+{y}")
-                except Exception:
-                    try:
-                        root.geometry(f"{cur_w}x{new_h}")
-                    except Exception:
-                        pass
+                pass
 
         try:
             self.after(0, _apply)

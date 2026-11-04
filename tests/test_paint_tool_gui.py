@@ -8,6 +8,7 @@ Runs only with a display and ``BRKRAW_VIEWER_SMOKE=1`` (use Xvfb, docs/dev/gui.m
 - press / motion / release changes the layer data and the rendered plane; Ctrl+Z reverts;
 - Esc cancels a stroke in progress; the right button erases (writes 0);
 - Selection and Drawing are mutually exclusive, and a paint click does not move the crosshair;
+- New label layer (in the Layers box) adds and selects a layer;
 - Save writes a .nii.gz (file dialog patched); removing a dirty layer asks (dialog patched);
 - the Tk root is destroyed in teardown.
 """
@@ -72,6 +73,7 @@ class Gui:
         self.right = tab.right
         self.paint = tab.right._paint
         self.box = tab.right._tool_box
+        self.layers = tab.top.layers_box
         self.btn = 1  # the mouse button the helpers press: 1 paints, 3 erases
         self.views = {"xz": self.right._xz, "xy": self.right._xy, "zy": self.right._zy}
 
@@ -95,6 +97,7 @@ class Gui:
                 walk(c)
 
         walk(self.box)
+        walk(self.layers)
         assert len(found) == 1, f"button {text!r}: found {len(found)}"
         return found[0]
 

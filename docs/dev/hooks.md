@@ -89,12 +89,15 @@ by extensions; they are not a versioned API:
   - `app.layers_api.get_overlay_array(layer_id, copy=True)`: the overlay's voxel array
     (`numpy.ndarray`); `copy=False` gives a read-only view.
   - `app.layers_api.remove_overlay(layer_id)`: remove an overlay; returns `None`.
+  - `app.layers_api.roi_timecourse(layer=None, label=None, wait=False, timeout=None)`: one call for the drawn ROI and label layers (the same call is on `app`). With no `layer` it is the drawn ROI's timecourse (the `app.roi_timecourse` form above). With `layer` (a label layer id) it returns `{label: values}`: the mean per frame of the shown scan over each label value > 0, computed on the main thread from the data in memory; `label` narrows it to one label. A label with no voxels is not reported. A missing scan or a non-label layer raises `ValueError` in the `<field>: got ..., expected ...` form.
   - `app.call_on_main(fn, timeout=5.0)`: run `fn()` on the Tk main thread and return its
     result. On the main thread it runs at once; from another thread it is queued, `fn`'s
     exception is re-raised to the caller, and `TimeoutError` follows if no answer comes
     within `timeout` seconds (the call is then cancelled).
 
   Rules:
+  - `app.layers_api.save_overlay(layer_id, path, *, overwrite=False)`: write a label overlay as `.nii.gz` and return the path. An existing file is refused unless `overwrite=True`; a non-label layer or a name not ending in `.nii.gz` raises `ValueError` in the `<field>: got ..., expected ...` form. A saved layer is no longer unsaved.
+  - `app.layers_api.load_overlay(path, *, name=None, editable=False, layer_id=None, **fields)`: read a label NIfTI and add it as a label overlay; returns the layer id. A file in another space or grid (shape or affine differing from the shown scan) is refused with the same message form as `add_overlay`; nothing is resampled.
   - Main thread only: every `layers_api` method raises `RuntimeError` from another thread.
     From a worker thread wrap the call in `call_on_main`.
   - Copies: `copy=True` means the handle owns its own copy. `copy=False` holds the caller's
@@ -116,6 +119,20 @@ names = [info.name for info in app.layers_api.list_layers()]  # base first, then
 back = app.layers_api.get_overlay_array(layer_id)  # a copy equal to mask
 app.layers_api.set_overlay(layer_id, alpha=0.5)
 app.layers_api.remove_overlay(layer_id)
+```
+
+Timecourse and save/load of a label overlay (`out_dir` is any writable folder):
+
+```python
+# example: layers_timecourse_io
+img, affine = app.layers_api.get_image()
+mask = (img > img.mean()).astype(np.uint8)
+layer_id = app.layers_api.add_overlay(mask, affine, name="mask", kind="label")
+curves = app.layers_api.roi_timecourse(layer=layer_id)  # {label: mean per frame}
+path = app.layers_api.save_overlay(layer_id, out_dir / "mask.nii.gz")
+loaded_id = app.layers_api.load_overlay(path, name="mask_again")
+app.layers_api.remove_overlay(layer_id)
+app.layers_api.remove_overlay(loaded_id)
 ```
 
 Hooks are loaded when the Extensions tab is built, and the panel is built again

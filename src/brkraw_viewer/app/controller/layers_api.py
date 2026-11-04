@@ -8,10 +8,12 @@ data; it imports no Tk.
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import numpy as np
 
+from ...core.labelio import load_label_nifti, save_label_nifti
 from ...core.layer_handle import LayerHandle, LayerInfo, _check_copy
 
 if TYPE_CHECKING:
@@ -87,3 +89,38 @@ class LayersAPI:
             raise ValueError(f"layer_id: got {layer_id!r}, expected a layer without unsaved paint edits (save or discard them first)")
         self._handle.remove_overlay(layer_id)
         self._ctl._drop_layer_data(layer_id)
+
+    def roi_timecourse(self, layer: Optional[str] = None, label: Optional[int] = None,
+                       wait: bool = False, timeout: Optional[float] = None) -> Optional[dict]:
+        """The drawn ROI's timecourse, or ``{label: values}`` of a label layer (see the controller)."""
+        _main_thread()
+        return self._ctl.roi_timecourse(layer=layer, label=label, wait=wait, timeout=timeout)
+
+    def save_overlay(self, layer_id: str, path, *, overwrite: bool = False) -> Path:
+        """Write a label overlay as .nii.gz; an existing file is refused unless overwrite=True."""
+        _main_thread()
+        if not isinstance(overwrite, bool):
+            raise ValueError(f"overwrite: got {overwrite!r}, expected True or False")
+        layer = next((l for l in self._handle.list_layers() if l.id == layer_id), None)
+        if layer is None or layer.kind != "label":
+            raise ValueError(f"layer_id: got {layer_id!r}, expected a label overlay id from list_layers()")
+        out = Path(path)
+        if not out.name.endswith(".nii.gz"):
+            raise ValueError(f"path: got {out.name!r}, expected a name ending in .nii.gz")
+        if out.exists() and not overwrite:
+            raise ValueError(f"path: got {str(out)!r}, expected a file that does not exist (pass overwrite=True to replace it)")
+        data = self._handle.get_overlay_array(layer_id, copy=False)
+        saved = save_label_nifti(data, layer.affine, out)
+        self._ctl._layer_dirty.discard(layer_id)
+        return saved
+
+    def load_overlay(self, path, *, name: Optional[str] = None, editable: bool = False,
+                     layer_id: Optional[str] = None, **fields: Any) -> str:
+        """Add a label NIfTI as a label overlay on the shown grid; another space or grid is refused."""
+        _main_thread()
+        self._sync()
+        data, affine = load_label_nifti(path)
+        return self._handle.add_overlay(
+            data, affine, name=name or Path(path).name.split(".")[0], kind="label",
+            editable=editable, layer_id=layer_id, copy=False, **fields,
+        )

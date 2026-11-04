@@ -58,6 +58,8 @@ The Tk tests are skipped unless `BRKRAW_VIEWER_SMOKE=1` is set and a display exi
 - `tests/test_roi_tool_box_gui.py` drives the ROI tool box (placement, modes, mouse buttons,
   colour). To write the screenshot of the user guide, run it under Xvfb with
   `BRKRAW_VIEWER_SHOT=docs/user/img/roi-tool-box.png`.
+- `tests/test_layers_box_gui.py` drives the Layers box (placement, list order, selection and
+  Drawing, New label layer, Up/Down, Delete, colormap and range, the Python layers API).
 - With the Tk 9 wheel, send `<MouseWheel>` events (not Button-4/5) when simulating scrolling.
 - Always destroy the Tk root at the end of a test (fixture with try/finally), or later tests
   hang or fail on a leaked root.
@@ -90,7 +92,8 @@ The Tk parts of the ROI tool are covered by the GUI checklist test above
 also have synthetic tests (`tests/test_roi_tool.py`). Check by hand with a 4D scan:
 
 - The ROI tool box (Crosshair / Selection / Drawing) sits in the top row; Crosshair by default,
-  and clicking a view moves the crosshair.
+  and clicking a view moves the crosshair. The top row holds, left to right, Orientation, ROI tool,
+  Hook and Value, Control, and Layers.
 - In Selection (Square or Circle), a click does not move the crosshair; dragging draws the outline in
   that view only, and it follows the pointer; zoom (Shift + wheel) keeps it on the same pixels.
 - Release: the mode returns to Crosshair, outline stays, the Timecourse window shows "ROI mean (shape, N voxels)".

@@ -10,31 +10,63 @@ from brkraw_viewer.app.services.viewer_config import REGISTRY_PATH_ENV
 
 _ICON_REF: tk.PhotoImage | None = None
 
-WINDOW_WIDTH = 980
+WINDOW_WIDTH = 1350
 WINDOW_HEIGHT = 640
 MIN_WIDTH = 800
 MIN_HEIGHT = 600
 
 
-def center_on_current_monitor(
-        root: tk.Tk, *, 
-        width: int | None = None, 
-        height: int | None = None
-    ) -> None:
-    # Make sure geometry info is available
+SCREEN_MARGIN = 8
+# Space kept free where the platform does not report a work area (menu bar and dock on macOS,
+# panels on X11).
+NON_WINDOWS_RESERVED_HEIGHT = 80
+
+Area = tuple[int, int, int, int]  # x, y, width, height
+
+
+def fit_geometry(
+    request: tuple[int, int],
+    minimum: tuple[int, int],
+    area: Area,
+    *,
+    margin: int = SCREEN_MARGIN,
+) -> tuple[int, int, int, int, int, int]:
+    """Fit a window into the usable screen area.
+
+    Returns ``(width, height, x, y, min_width, min_height)``. The size is the request capped by
+    the area minus ``margin`` on every side, the minimum size is capped the same way, and the
+    window is centred in the area and never leaves it.
+    """
+    ax, ay, aw, ah = (int(v) for v in area)
+    max_w = max(aw - 2 * margin, 1)
+    max_h = max(ah - 2 * margin, 1)
+    width = max(1, min(int(request[0]), max_w))
+    height = max(1, min(int(request[1]), max_h))
+    min_w = min(int(minimum[0]), max_w, width)
+    min_h = min(int(minimum[1]), max_h, height)
+    x = ax + (aw - width) // 2
+    y = ay + (ah - height) // 2
+    x = min(max(x, ax + margin), ax + aw - margin - width)
+    y = min(max(y, ay + margin), ay + ah - margin - height)
+    return width, height, x, y, min_w, min_h
+
+
+def geometry_string(width: int, height: int, x: int, y: int) -> str:
+    """Tk geometry string with an absolute position; a negative coordinate is written as "+-N"."""
+    return f"{int(width)}x{int(height)}+{int(x)}+{int(y)}"
+
+
+def usable_area(root: tk.Tk) -> Area:
+    """Usable screen area (x, y, width, height) of the monitor under the pointer."""
     root.update_idletasks()
-
-    w = int(width or root.winfo_width() or root.winfo_reqwidth())
-    h = int(height or root.winfo_height() or root.winfo_reqheight())
-
     px = root.winfo_pointerx()
     py = root.winfo_pointery()
 
-    # Default fallback: center on primary screen reported by Tk
     screen_x = 0
     screen_y = 0
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
+    work_area_found = False
 
     if sys.platform.startswith("win"):
         try:
@@ -69,15 +101,33 @@ def center_on_current_monitor(
                 screen_y = int(r.top)
                 screen_w = int(r.right - r.left)
                 screen_h = int(r.bottom - r.top)
+                work_area_found = True
         except Exception:
             pass
 
-    # Compute centered position in the chosen screen/work area
-    x = screen_x + (screen_w - w) // 2
-    y = screen_y + (screen_h - h) // 2
+    if not work_area_found:
+        screen_h = max(screen_h - NON_WINDOWS_RESERVED_HEIGHT, 1)
+    return screen_x, screen_y, int(screen_w), int(screen_h)
 
-    # Apply geometry
-    root.geometry(f"{w}x{h}+{x}+{y}")
+
+def center_on_current_monitor(
+        root: tk.Tk, *,
+        width: int | None = None,
+        height: int | None = None,
+        area: Area | None = None,
+    ) -> None:
+    # Make sure geometry info is available
+    root.update_idletasks()
+
+    w = int(width or root.winfo_width() or root.winfo_reqwidth())
+    h = int(height or root.winfo_height() or root.winfo_reqheight())
+    if area is None:
+        area = usable_area(root)
+
+    min_w, min_h = root.minsize()
+    w, h, x, y, min_w, min_h = fit_geometry((w, h), (min_w, min_h), area)
+    root.minsize(min_w, min_h)
+    root.geometry(geometry_string(w, h, x, y))
 
 
 def bring_to_front_once(root: "tk.Tk") -> None:
@@ -149,8 +199,8 @@ def run_app(
 
     # ---- window metadata ----
     root.title("BrkRaw Viewer")
-    root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
     root.minsize(MIN_WIDTH, MIN_HEIGHT)
+    root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
 
     # ---- icon ----
     _set_app_icon(root)

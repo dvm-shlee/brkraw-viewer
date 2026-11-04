@@ -873,6 +873,90 @@ class ViewerController:
         self._selected_layer_id = layer_id
         self._render_viewer_views()
 
+    # ---- Layers box: the list and its buttons ask these ----
+
+    def viewer_layer_rows(self) -> list[dict]:
+        """Rows of the Layers box, top row first (drawn last); the base layer is the last row."""
+        layers = list(self._layers)
+        rows: list[dict] = []
+        for pos in range(len(layers) - 1, -1, -1):
+            lay = layers[pos]
+            is_base = pos == 0
+            rows.append({
+                "id": lay.id,
+                "name": lay.name,
+                "kind": lay.kind,
+                "visible": bool(lay.visible),
+                "base": is_base,
+                "editable": bool(lay.editable),
+                "cmap": lay.cmap,
+                "window": lay.window,
+                "can_up": (not is_base) and pos < len(layers) - 1,
+                "can_down": (not is_base) and pos > 1,
+                "can_delete": not is_base,
+                "can_style": (not is_base) and lay.kind == "image",
+            })
+        return rows
+
+    def viewer_selected_layer(self) -> Optional[str]:
+        """The layer chosen for painting; None when no layer is chosen or it is gone."""
+        lid = self._selected_layer_id
+        return lid if lid is not None and lid in self._layers.ids() else None
+
+    def on_viewer_layer_select(self, layer_id: Optional[str]) -> None:
+        """Row chosen: an editable label layer becomes the paint target, any other row clears it."""
+        if layer_id is None:
+            self.select_layer(None)
+            return
+        if layer_id not in self._layers.ids():
+            raise ValueError(f"layer_id: got {layer_id!r}, expected one of {self._layers.ids()}")
+        layer = self._layers.get(layer_id)
+        self.select_layer(layer_id if layer.kind == "label" and layer.editable else None)
+
+    def on_viewer_layer_visible(self, layer_id: str, visible: bool) -> None:
+        if layer_id not in self._layers.ids():
+            raise ValueError(f"layer_id: got {layer_id!r}, expected one of {self._layers.ids()}")
+        self._layers.update(layer_id, visible=bool(visible))
+        self._render_viewer_views()
+
+    def on_viewer_layer_move(self, layer_id: str, direction: str) -> bool:
+        """Move a non-base layer one step "up" (drawn later) or "down"; False at the end of the list."""
+        if direction not in ("up", "down"):
+            raise ValueError(f"direction: got {direction!r}, expected one of ['up', 'down']")
+        index = self._layers.index(layer_id)
+        target = index + 1 if direction == "up" else index - 1
+        if index == 0 or not 1 <= target <= len(self._layers) - 1:
+            return False
+        self._layers.move(layer_id, target)
+        self._render_viewer_views()
+        return True
+
+    def on_viewer_layer_delete(self, layer_id: str) -> bool:
+        """Remove a non-base layer; unsaved paint edits ask first. False when the layer is kept."""
+        if self._layers.index(layer_id) == 0:
+            raise ValueError(f"layer_id: got {layer_id!r}, expected a non-base layer")
+        return self._remove_layer(layer_id)
+
+    LAYER_CMAPS = ("gray", "hot", "red", "green", "blue")
+
+    def on_viewer_layer_style(self, layer_id: str, cmap: str, window: Optional[tuple[float, float]]) -> None:
+        """Set the colormap and display range of a non-base image layer; window None is automatic."""
+        index = self._layers.index(layer_id)
+        if index == 0 or self._layers.get(layer_id).kind != "image":
+            raise ValueError(f"layer_id: got {layer_id!r}, expected a non-base image layer")
+        if cmap not in self.LAYER_CMAPS:
+            raise ValueError(f"cmap: got {cmap!r}, expected one of {list(self.LAYER_CMAPS)}")
+        if window is not None:
+            try:
+                lo, hi = float(window[0]), float(window[1])
+            except (TypeError, ValueError, IndexError):
+                raise ValueError(f"window: got {window!r}, expected None or (min, max) numbers")
+            if not (np.isfinite(lo) and np.isfinite(hi) and hi > lo):
+                raise ValueError(f"window: got {window!r}, expected finite (min, max) with max > min")
+            window = (lo, hi)
+        self._layers.update(layer_id, cmap=cmap, window=window)
+        self._render_viewer_views()
+
     def _paint_target(self) -> Optional[tuple[Layer, np.ndarray]]:
         """The selected layer and its array when it is an editable 3-D integer label layer."""
         lid = self._selected_layer_id
@@ -1520,8 +1604,24 @@ class ViewerController:
         if had:
             self._render_viewer_views()
 
-    def roi_timecourse(self, wait: bool = False, timeout: Optional[float] = None) -> Optional[dict]:
-        """The ROI's mean per frame once the worker has answered, else None (provisional API).
+    def roi_timecourse(
+        self,
+        layer: Optional[str] = None,
+        label: Optional[int] = None,
+        wait: bool = False,
+        timeout: Optional[float] = None,
+    ) -> Optional[dict]:
+        """Mean timecourse of the drawn ROI, or of the labels of a label layer (provisional API).
+
+        With ``layer`` (a label layer id) the result is ``{label: values}``: for every label
+        value > 0 the mean per frame of the shown scan over that label's voxels, computed on the
+        main thread from the data in memory (``wait`` and ``timeout`` do not apply). ``label``
+        narrows it to one label value; a label without voxels is not reported. Raises
+        ``ValueError`` without a loaded scan, for an unknown or non-label layer, or for ``label``
+        without ``layer``, and ``RuntimeError`` off the main thread. Without ``layer`` the call is
+        the drawn ROI's, as below.
+
+        The drawn ROI's mean per frame once the worker has answered, else None.
 
         Keys: ``values`` (mean of the finite voxels per frame), ``n_mask`` (voxels in the mask),
         ``n_per_frame``, ``shape``, ``axis``, ``index``. None without a ROI or while the answer
@@ -1533,6 +1633,8 @@ class ViewerController:
         waiting) and ``TimeoutError`` after ``timeout`` seconds (None waits without limit). A ROI
         replaced while waiting is answered by the new ROI's result, never the stale one.
         """
+        if layer is not None or label is not None:
+            return self._label_timecourse(layer, label)
         if not wait:
             return self._roi_answer()
         import time
@@ -1551,6 +1653,28 @@ class ViewerController:
                 raise TimeoutError(f"ROI timecourse not ready after {limit:g} s.")
             self._pump_events()
             time.sleep(0.005)
+
+    def _label_timecourse(self, layer: Optional[str], label: Optional[int]) -> dict:
+        from .layers_api import _main_thread
+        from ...core.labelstats import label_timecourse
+
+        _main_thread()
+        if layer is None:
+            raise ValueError("layer: got None with a label, expected a label layer id")
+        if self._viewer_volume is None:
+            raise ValueError("image: got no loaded scan, expected a loaded scan (open a dataset and select a scan first)")
+        if layer not in self._layers.ids():
+            raise ValueError(f"layer: got {layer!r}, expected one of {self._layers.ids()}")
+        kind = self._layers.get(layer).kind
+        if kind != "label":
+            raise ValueError(f"layer: got {layer!r} of kind {kind!r}, expected a label layer")
+        data = self._layer_data.get(layer)
+        if data is None:
+            raise ValueError(f"layer: got {layer!r}, expected a layer with data in memory")
+        out = label_timecourse(np.asarray(self._viewer_volume), np.asarray(data))
+        if label is not None:
+            out = {int(label): out[int(label)]} if int(label) in out else {}
+        return {k: [float(x) for x in v] for k, v in out.items()}
 
     def _pump_events(self) -> None:
         """Deliver worker results and let Tk handle events (one step of a blocking wait)."""

@@ -67,6 +67,21 @@ brkraw viewer
 Open a dataset, select a multi-frame scan in the Viewer tab, pick `try-roi` in the Extensions tab and press the buttons.
 The ROI is drawn on the axial view and the Timecourse plot shows its mean.
 
+### Timecourse of a label layer
+
+`roi_timecourse` also reads a label layer. Pass the layer id (as returned by `add_overlay(..., kind="label")`) and the
+call returns `{label: values}`, the mean per frame over each label value above 0. It is computed on the main thread from
+the data in memory, so it answers at once and `wait` does not apply. `label=` narrows the result to one label value.
+
+```python
+layer_id = app.layers_api.add_overlay(mask, affine, name="mask", kind="label")
+
+all_labels = app.roi_timecourse(layer=layer_id)            # {1: [...], 2: [...]}
+one_label = app.roi_timecourse(layer=layer_id, label=1)    # {1: [...]}
+```
+
+It raises `ValueError` without a loaded scan, for an unknown or non-label layer, or for `label` without `layer`.
+
 ## Layers API from a hook
 
 The Layers API (`app.layers_api`) adds, changes and removes overlay layers. It can only be called on the Tk main thread.

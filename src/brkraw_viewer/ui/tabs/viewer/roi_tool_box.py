@@ -36,12 +36,12 @@ class RoiToolBox(ttk.LabelFrame):
                 variable=self.mode_var,
                 command=self._on_mode,
             )
-            radio.pack(side=tk.LEFT, padx=(0, 4))
+            radio.pack(side=tk.LEFT, padx=(0, 2))
             self._mode_radios[mode] = radio
 
         self.shape_row = ttk.Frame(self)
         self.shape_row.grid(row=1, column=0, sticky="w", pady=(4, 0))
-        ttk.Label(self.shape_row, text="Shape").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(self.shape_row, text="Shape").pack(side=tk.LEFT, padx=(0, 2))
         self._shape_radios: dict[str, ttk.Radiobutton] = {}
         for shape in SHAPES:
             radio = ttk.Radiobutton(
@@ -51,7 +51,7 @@ class RoiToolBox(ttk.LabelFrame):
                 variable=self.shape_var,
                 command=self._on_shape,
             )
-            radio.pack(side=tk.LEFT, padx=(0, 4))
+            radio.pack(side=tk.LEFT, padx=(0, 2))
             self._shape_radios[shape] = radio
         self.shape_row.update_idletasks()
         self.rowconfigure(1, minsize=self.shape_row.winfo_reqheight() + 4)  # the box keeps its height in every mode

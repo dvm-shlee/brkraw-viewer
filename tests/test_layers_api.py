@@ -150,3 +150,135 @@ def test_refresh_clears_cached_windows(ctrl):
     assert ctrl._layer_windows.get((lid, 0)) != (-99.0, -98.0)
     assert ctrl._layer_windows[(other, 0)] == (-99.0, -98.0)
     assert ctrl._layer_label_colors.get(lid) != {77: (1, 2, 3)}
+
+
+def _labels(ctrl, name="lab"):
+    grid, _ = _loaded(ctrl)
+    mask = np.zeros(grid.shape, dtype=np.uint8)
+    mask[:2, :2, :2] = 1
+    mask[3:5, 3:5, 3:5] = 4
+    return mask, ctrl.layers_api.add_overlay(mask, grid.affine, name=name, kind="label")
+
+
+def test_roi_timecourse_layer_gives_per_label_means(ctrl):
+    mask, lid = _labels(ctrl)
+    vol = np.asarray(ctrl._viewer_volume)
+    for call in (ctrl.roi_timecourse, ctrl.layers_api.roi_timecourse):
+        out = call(layer=lid)
+        assert sorted(out) == [1, 4]  # label 2, 3 have no voxels: not reported
+        for k in out:
+            assert out[k] == pytest.approx([float(vol[mask == k].mean())])
+        assert call(layer=lid, label=4) == {4: out[4]}
+        assert call(layer=lid, label=2) == {}
+
+
+def test_roi_timecourse_layer_errors_use_the_stage4_form(ctrl):
+    with pytest.raises(ValueError) as e:
+        ctrl.layers_api.roi_timecourse(layer="x")
+    _fail(e, "image")
+    mask, lid = _labels(ctrl)
+    with pytest.raises(ValueError) as e:
+        ctrl.layers_api.roi_timecourse(layer="base")
+    _fail(e, "layer")
+    with pytest.raises(ValueError) as e:
+        ctrl.layers_api.roi_timecourse(layer="nope")
+    _fail(e, "layer")
+    with pytest.raises(ValueError) as e:
+        ctrl.layers_api.roi_timecourse(label=1)
+    _fail(e, "layer")
+
+
+def test_roi_timecourse_layer_from_another_thread_is_refused(ctrl):
+    _, lid = _labels(ctrl)
+    caught = []
+
+    def work():
+        for call in (ctrl.roi_timecourse, ctrl.layers_api.roi_timecourse):
+            try:
+                call(layer=lid)
+            except RuntimeError as exc:
+                caught.append(str(exc))
+
+    t = threading.Thread(target=work)
+    t.start()
+    t.join()
+    assert len(caught) == 2 and all("thread: got" in m and "expected" in m for m in caught)
+
+
+def test_no_separate_label_timecourse_method(ctrl):
+    assert not hasattr(ctrl, "label_timecourse") and not hasattr(ctrl.layers_api, "label_timecourse")
+
+
+def _label(ctrl, name="lab"):
+    grid, _ = _loaded(ctrl) if ctrl._viewer_volume is None else (ctrl._display_grid(), None)
+    arr = np.zeros(grid.shape, dtype=np.uint8)
+    arr[1, 1, 1] = 3
+    return ctrl.layers_api.add_overlay(arr, grid.affine, name=name, kind="label"), arr
+
+
+def test_save_then_load_overlay_in_the_same_session(ctrl, tmp_path):
+    lid, arr = _label(ctrl)
+    out = ctrl.layers_api.save_overlay(lid, tmp_path / "a.nii.gz")
+    assert out.exists()
+    new = ctrl.layers_api.load_overlay(out)
+    assert new != lid
+    np.testing.assert_array_equal(ctrl.layers_api.get_overlay_array(new), arr)
+    info = {i.id: i for i in ctrl.layers_api.list_layers()}[new]
+    assert info.kind == "label" and info.name == "a"
+
+
+def test_save_refuses_existing_file_unless_overwrite(ctrl, tmp_path):
+    lid, _ = _label(ctrl)
+    path = tmp_path / "a.nii.gz"
+    ctrl.layers_api.save_overlay(lid, path)
+    with pytest.raises(ValueError) as e:
+        ctrl.layers_api.save_overlay(lid, path)
+    _fail(e, "path")
+    assert ctrl.layers_api.save_overlay(lid, path, overwrite=True) == path
+
+
+def test_save_refuses_a_bad_layer_and_name(ctrl, tmp_path):
+    lid, _ = _label(ctrl)
+    img, _ = _add(ctrl)
+    for bad in ("nope", img):
+        with pytest.raises(ValueError) as e:
+            ctrl.layers_api.save_overlay(bad, tmp_path / "x.nii.gz")
+        _fail(e, "layer_id")
+    with pytest.raises(ValueError) as e:
+        ctrl.layers_api.save_overlay(lid, tmp_path / "x.txt")
+    _fail(e, "path")
+
+
+def test_load_refuses_another_grid_or_affine(ctrl, tmp_path):
+    from brkraw_viewer.core.labelio import save_label_nifti
+
+    grid, _ = _loaded(ctrl)
+    other = np.zeros(tuple(s + 1 for s in grid.shape), dtype=np.uint8)
+    save_label_nifti(other, grid.affine, tmp_path / "s.nii.gz")
+    with pytest.raises(ValueError) as e:
+        ctrl.layers_api.load_overlay(tmp_path / "s.nii.gz")
+    _fail(e, "shape")
+    shifted = np.array(grid.affine, dtype=float)
+    shifted[0, 3] += 10.0
+    save_label_nifti(np.zeros(grid.shape, dtype=np.uint8), shifted, tmp_path / "t.nii.gz")
+    with pytest.raises(ValueError) as e:
+        ctrl.layers_api.load_overlay(tmp_path / "t.nii.gz")
+    _fail(e, "affine")
+
+
+def test_overlay_io_from_another_thread(ctrl, tmp_path):
+    lid, _ = _label(ctrl)
+    caught = []
+
+    def work():
+        for call in (lambda: ctrl.layers_api.save_overlay(lid, tmp_path / "b.nii.gz"),
+                     lambda: ctrl.layers_api.load_overlay(tmp_path / "b.nii.gz")):
+            try:
+                call()
+            except RuntimeError as exc:
+                caught.append(str(exc))
+
+    t = threading.Thread(target=work)
+    t.start()
+    t.join()
+    assert len(caught) == 2 and all("thread: got" in m for m in caught)

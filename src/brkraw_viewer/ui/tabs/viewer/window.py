@@ -63,6 +63,7 @@ class ViewerTab:
             window=window,
             layers=layers,
         )
+        self.top.layers_box.refresh()  # layers may have been added, removed, reordered or restyled
 
     def set_subject_enabled(self, enabled: bool) -> None:
         self.top.set_subject_enabled(enabled)

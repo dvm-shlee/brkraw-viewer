@@ -2,7 +2,7 @@
 
 Thin on purpose: the brush, undo and saving live in core/painter.py and core/labelio.py; the
 controller maps display pixels to layer voxels. The widgets here are the brush size, the colour
-button of the painted label and the Undo / New label layer / Save label... buttons; they sit in
+button of the painted label and the Undo / Save label... buttons; they sit in
 the ROI tool box (roi_tool_box.py), which decides when drawing is on. Pointer events (given in
 view image row/col) are forwarded to the controller callbacks: the left button paints, the right
 button erases.
@@ -43,10 +43,8 @@ class PaintTool:
         self._undo_btn.pack(side=tk.LEFT, padx=(6, 0))
         bottom = ttk.Frame(self.frame)
         bottom.pack(side=tk.TOP, fill=tk.X, pady=(4, 0))
-        self._new = ttk.Button(bottom, text="New label layer", command=self.new_layer)
-        self._new.pack(side=tk.LEFT, padx=(0, 2))
         self._save = ttk.Button(bottom, text="Save label...", command=self.save)
-        self._save.pack(side=tk.LEFT, padx=(2, 0))
+        self._save.pack(side=tk.LEFT)
         self.refresh()
 
     # ----- state -----
@@ -89,7 +87,6 @@ class PaintTool:
         self._brush.configure(state="normal" if enabled else "disabled")
         self._undo_btn.configure(state="normal" if state.get("can_undo") else "disabled")
         self._save.configure(state="normal" if state.get("can_save") else "disabled")
-        self._new.configure(state="normal" if state.get("can_new") else "disabled")
         self._refresh_color()
 
     def _refresh_color(self) -> None:
@@ -145,16 +142,6 @@ class PaintTool:
         handler = getattr(self._callbacks, "on_viewer_paint_undo", None)
         if callable(handler):
             handler()
-        self.refresh()
-
-    def new_layer(self) -> None:
-        handler = getattr(self._callbacks, "on_viewer_paint_new_layer", None)
-        if not callable(handler):
-            return
-        try:
-            handler()
-        except ValueError as exc:
-            messagebox.showerror("New label layer", str(exc), parent=self.frame)
         self.refresh()
 
     def save(self) -> None:

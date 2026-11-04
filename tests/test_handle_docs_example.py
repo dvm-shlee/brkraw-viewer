@@ -27,10 +27,10 @@ def ctrl(monkeypatch, tmp_path):
     return c
 
 
-def _example() -> str:
+def _example(tag: str = "layers_api") -> str:
     blocks = re.findall(FENCE + r"python\n(.*?)" + FENCE, HOOKS.read_text(), flags=re.S)
-    found = [b for b in blocks if b.lstrip().startswith("# example: layers_api")]
-    assert len(found) == 1, f"expected one layers_api example, got {len(found)}"
+    found = [b for b in blocks if b.lstrip().startswith("# example: " + tag)]
+    assert len(found) == 1, f"expected one {tag} example, got {len(found)}"
     lines = found[0].splitlines()
     indent = len(lines[0]) - len(lines[0].lstrip())
     return "\n".join(line[indent:] for line in lines)
@@ -43,6 +43,18 @@ def test_example_runs_and_leaves_no_overlay(ctrl):
     assert isinstance(ns["layer_id"], str)
     assert len(ns["names"]) == 2 and ns["names"][-1] == "mask"
     np.testing.assert_array_equal(ns["back"], ns["mask"])
+    assert [i.id for i in ctrl.layers_api.list_layers()] == ["base"]
+
+
+def test_timecourse_and_overlay_io_example_runs(ctrl, tmp_path):
+    load(ctrl, raw_volume())
+    ns = {"app": ctrl, "np": np, "out_dir": tmp_path}
+    exec(compile(_example("layers_timecourse_io"), "hooks.md:layers_timecourse_io", "exec"), ns)
+    assert list(ns["curves"]) == [1]
+    assert ns["path"].exists() and ns["path"].name == "mask.nii.gz"
+    img, _ = ctrl.layers_api.get_image()
+    expected = float(np.mean(img[ns["mask"] == 1]))
+    assert abs(float(ns["curves"][1][0]) - expected) < 1e-3 * max(1.0, abs(expected))
     assert [i.id for i in ctrl.layers_api.list_layers()] == ["base"]
 
 

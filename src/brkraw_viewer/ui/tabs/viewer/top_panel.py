@@ -4,10 +4,13 @@ import tkinter as tk
 from tkinter import ttk
 
 from brkraw_viewer.ui.tabs.viewer.roi_tool_box import RoiToolBox
+from brkraw_viewer.ui.tabs.viewer.layers_box import LayersBox
 from brkraw_viewer.ui.windows.hook_options import refresh_open_dialog, show_hook_options
 
 
 class ViewerTopPanel(ttk.Frame):
+    _GAP = 8
+
     def __init__(self, parent: tk.Misc, *, callbacks) -> None:
         super().__init__(parent)
         self._callbacks = callbacks
@@ -16,7 +19,8 @@ class ViewerTopPanel(ttk.Frame):
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=0)
         self.columnconfigure(2, weight=0)
-        self.columnconfigure(3, weight=1)
+        self.columnconfigure(3, weight=0)
+        self.columnconfigure(4, weight=1)
 
         left_container = ttk.Frame(self, width=300)
         left_container.grid(row=0, column=0, sticky="n", padx=(0, 8))
@@ -30,17 +34,20 @@ class ViewerTopPanel(ttk.Frame):
         right_container = ttk.Frame(self, width=240)
         right_container.grid(row=0, column=3, sticky="n", padx=(8, 0))
         right_container.grid_propagate(False)
+        layers_container = ttk.Frame(self, width=280)
+        layers_container.grid(row=0, column=4, sticky="n", padx=(8, 0))
+        layers_container.grid_propagate(False)
 
         left = ttk.Frame(left_container)
         left.place(relx=0.5, rely=0.0, anchor="n", width=300)
         left.columnconfigure(0, weight=1)
 
-        self.orientation_frame = ttk.LabelFrame(left, text="Orientation", padding=(6, 4))
+        self.orientation_frame = ttk.LabelFrame(left, text="Orientation", padding=(4, 4))
         self.orientation_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 0))
         self.orientation_frame.columnconfigure(1, weight=1, uniform="viewer_orientation_cols")
         self.orientation_frame.columnconfigure(2, weight=1, uniform="viewer_orientation_cols")
 
-        ttk.Label(self.orientation_frame, text="Space").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        ttk.Label(self.orientation_frame, text="Space").grid(row=0, column=0, sticky="w", padx=(0, 4))
         space_radio_frame = ttk.Frame(self.orientation_frame)
         space_radio_frame.grid(row=0, column=1, columnspan=2, sticky="ew", pady=(0, 4))
         self._space_var = tk.StringVar(master=self, value="scanner")
@@ -51,7 +58,7 @@ class ViewerTopPanel(ttk.Frame):
                 value=value,
                 command=lambda v=value: self._on_space(callbacks, v),
                 variable=self._space_var,
-            ).pack(side=tk.LEFT, padx=(0, 10))
+            ).pack(side=tk.LEFT, padx=(0, 6))
 
         ttk.Label(self.orientation_frame, text="Type").grid(row=1, column=0, sticky="w", padx=(0, 8))
         self._subject_type_var = tk.StringVar(master=self, value="Biped")
@@ -60,7 +67,7 @@ class ViewerTopPanel(ttk.Frame):
             textvariable=self._subject_type_var,
             state="readonly",
             values=("Biped", "Quadruped", "Phantom", "Other", "OtherAnimal"),
-            width=8,
+            width=7,
         )
         self._subject_type_combo.grid(row=1, column=1, sticky="ew", padx=(0, 4))
         self._subject_type_combo.bind("<<ComboboxSelected>>", lambda *_: self._on_subject_change(callbacks))
@@ -80,7 +87,7 @@ class ViewerTopPanel(ttk.Frame):
             textvariable=self._pose_primary_var,
             state="readonly",
             values=("Head", "Foot"),
-            width=8,
+            width=7,
         )
         self._pose_primary_combo.grid(row=2, column=1, sticky="ew", padx=(0, 4), pady=(6, 0))
         self._pose_primary_combo.bind("<<ComboboxSelected>>", lambda *_: self._on_subject_change(callbacks))
@@ -89,14 +96,14 @@ class ViewerTopPanel(ttk.Frame):
             textvariable=self._pose_secondary_var,
             state="readonly",
             values=("Supine", "Prone", "Left", "Right"),
-            width=8,
+            width=7,
         )
         self._pose_secondary_combo.grid(row=2, column=2, sticky="ew", padx=(4, 0), pady=(6, 0))
         self._pose_secondary_combo.bind("<<ComboboxSelected>>", lambda *_: self._on_subject_change(callbacks))
 
         flip_row = ttk.Frame(self.orientation_frame)
         flip_row.grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
-        ttk.Label(flip_row, text="Flip").pack(side=tk.LEFT, padx=(0, 14))
+        ttk.Label(flip_row, text="Flip").pack(side=tk.LEFT, padx=(0, 8))
         self._flip_x_var = tk.BooleanVar(master=self, value=False)
         self._flip_y_var = tk.BooleanVar(master=self, value=False)
         self._flip_z_var = tk.BooleanVar(master=self, value=False)
@@ -105,13 +112,13 @@ class ViewerTopPanel(ttk.Frame):
             text="X",
             variable=self._flip_x_var,
             command=lambda: self._on_flip(callbacks, "x"),
-        ).pack(side=tk.LEFT, padx=(0, 10))
+        ).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Checkbutton(
             flip_row,
             text="Y",
             variable=self._flip_y_var,
             command=lambda: self._on_flip(callbacks, "y"),
-        ).pack(side=tk.LEFT, padx=(0, 10))
+        ).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Checkbutton(
             flip_row,
             text="Z",
@@ -145,7 +152,7 @@ class ViewerTopPanel(ttk.Frame):
             state="disabled",
         )
         self._hook_check.grid(row=0, column=0, sticky="w", padx=(0, 6))
-        name_entry = ttk.Entry(hook_frame, textvariable=self._hook_name_var, width=14, state="readonly")
+        name_entry = ttk.Entry(hook_frame, textvariable=self._hook_name_var, width=10, state="readonly")
         name_entry.grid(row=0, column=1, sticky="ew")
         self._hook_options_button = ttk.Button(
             hook_frame,
@@ -219,6 +226,14 @@ class ViewerTopPanel(ttk.Frame):
         self._zoom_scale.set(1.0)
         self._zoom_scale.pack(side=tk.TOP, fill=tk.X, expand=True)
 
+        layers = ttk.Frame(layers_container)
+        layers.place(relx=0.5, rely=0.0, anchor="n", width=280)
+        layers.columnconfigure(0, weight=1)
+        self.layers_box = LayersBox(layers, callbacks=callbacks, on_changed=self.tool_box.refresh)
+        self.layers_box.grid(row=0, column=0, sticky="nsew")
+
+        self._boxes = [left, tool, mid, right, layers]
+
         def _resize(_event: tk.Event | None = None) -> None:
             width = max(self.winfo_width(), 1)
             
@@ -226,15 +241,17 @@ class ViewerTopPanel(ttk.Frame):
             w_tool = max(tool.winfo_reqwidth(), 10)
             w_mid = max(mid.winfo_reqwidth(), 10)
             w_right = max(right.winfo_reqwidth(), 10)
-            gap = 12
+            w_layers = max(layers.winfo_reqwidth(), 10)
+            gap = self._GAP
             
-            total_req = w_left + w_tool + w_mid + w_right + (gap * 3)
+            total_req = w_left + w_tool + w_mid + w_right + w_layers + (gap * 4)
             start_x = max(0, (width - total_req) // 2)
             
             left_container.grid_forget()
             tool_container.grid_forget()
             mid_container.grid_forget()
             right_container.grid_forget()
+            layers_container.grid_forget()
             
             x = start_x
             
@@ -242,35 +259,57 @@ class ViewerTopPanel(ttk.Frame):
             h_tool = max(tool.winfo_reqheight(), 1)
             h_mid = max(mid.winfo_reqheight(), 1)
             h_right = max(right.winfo_reqheight(), 1)
+            h_layers = max(layers.winfo_reqheight(), 1)
             
-            max_h = max(h_left, h_tool, h_mid, h_right)
+            max_h = max(h_left, h_tool, h_mid, h_right, h_layers)
             
             left_container.place(x=x, y=0, width=w_left, height=max_h)
-            y_left = (max_h - h_left) // 2
-            left.place(x=0, y=y_left, width=w_left, height=h_left)
+            y_left = 0  # top-aligned
+            left.place(relx=0, anchor="nw", x=0, y=y_left, width=w_left, height=h_left)
             x += w_left + gap
             
             tool_container.place(x=x, y=0, width=w_tool, height=max_h)
-            y_tool = (max_h - h_tool) // 2
-            tool.place(x=0, y=y_tool, width=w_tool, height=h_tool)
+            y_tool = 0  # top-aligned
+            tool.place(relx=0, anchor="nw", x=0, y=y_tool, width=w_tool, height=h_tool)
             x += w_tool + gap
 
             mid_container.place(x=x, y=0, width=w_mid, height=max_h)
-            y_mid = (max_h - h_mid) // 2
-            mid.place(x=0, y=y_mid, width=w_mid, height=h_mid)
+            y_mid = 0  # top-aligned
+            mid.place(relx=0, anchor="nw", x=0, y=y_mid, width=w_mid, height=h_mid)
             x += w_mid + gap
             
             right_container.place(x=x, y=0, width=w_right, height=max_h)
-            y_right = (max_h - h_right) // 2
-            right.place(x=0, y=y_right, width=w_right, height=h_right)
+            y_right = 0  # top-aligned
+            right.place(relx=0, anchor="nw", x=0, y=y_right, width=w_right, height=h_right)
+            x += w_right + gap
+
+            layers_container.place(x=x, y=0, width=w_layers, height=max_h)
+            y_layers = 0  # top-aligned
+            layers.place(relx=0, anchor="nw", x=0, y=y_layers, width=w_layers, height=h_layers)
             
             try:
                 self.configure(height=max_h)
             except Exception:
                 pass
+            used = (w_left, w_tool, w_mid, w_right, w_layers)
+            self.after_idle(lambda: _settle(used))
+
+        def _settle(used: tuple[int, ...]) -> None:
+            # A box can change its requested width after placement (for example a hidden row
+            # appears); lay out again so the gaps stay equal.
+            try:
+                now = tuple(max(b.winfo_reqwidth(), 10) for b in self._boxes)
+            except tk.TclError:
+                return
+            if now != used:
+                _resize()
 
         self.bind("<Configure>", _resize)
         self.after(0, _resize)
+
+    def required_width(self) -> int:
+        """Width the five boxes need side by side, gaps included."""
+        return int(sum(max(w.winfo_reqwidth(), 10) for w in self._boxes) + self._GAP * (len(self._boxes) - 1))
 
     def _on_hook_toggle(self, callbacks) -> None:
         handler = getattr(callbacks, "on_viewer_hook_toggle", None)

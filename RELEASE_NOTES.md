@@ -2,6 +2,10 @@
 
 Changes since 0.5.0b1
 
+New features
+
+- `roi_timecourse(layer=None, label=None, wait=False, timeout=None)` on the controller and `app.layers_api`: with no argument the drawn ROI, with `layer` the per-label mean timecourses of a label layer (`label` narrows to one). It is computed on the main thread; labels with no voxels are not reported.
+
 Fixes
 
 - Test files renamed to test_<topic>.py.

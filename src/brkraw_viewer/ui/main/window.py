@@ -117,19 +117,20 @@ class MainWindow(ttk.Frame):
             pass
 
     def _required_width(self) -> int:
-        """Width at which the five top-row boxes are fully visible (0 when unknown)."""
+        """Width at which the side panel and a minimum viewport width fit (0 when unknown)."""
         try:
             top = self.tabs.get_tab("Viewer")._tab_instance.top  # type: ignore[attr-defined]
             box_w = int(top.required_width())
-            chrome = int(self.winfo_toplevel().winfo_width()) - int(top.winfo_width())
-            if int(top.winfo_width()) <= 1 or chrome < 0:
+            tab_w = int(self.tabs.get_tab("Viewer")._tab_instance.frame.winfo_width())  # type: ignore[attr-defined]
+            chrome = int(self.winfo_toplevel().winfo_width()) - tab_w
+            if tab_w <= 1 or chrome < 0:
                 chrome = int(self.sidebar.winfo_reqwidth()) + 60
             return box_w + chrome
         except Exception:
             return 0
 
     def _finalize_geometry(self) -> None:
-        # Make the initial toplevel big enough for the top row and all children, but never larger
+        # Make the initial toplevel big enough for the side panel, a minimum view width and all children, but never larger
         # than the usable screen area, so the status bar is not clipped on first show.
         from brkraw_viewer.app.bootstrap import MIN_HEIGHT, MIN_WIDTH, center_on_current_monitor
 

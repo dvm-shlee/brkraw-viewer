@@ -23,6 +23,7 @@ nav:
       - Convert: user/convert.md
       - Config: user/config.md
       - Examples: user/examples.md
+      - Try new features: user/try-new-features.md
   - Extensions:
       - Overview: extensions/index.md
   - Developer Guide:

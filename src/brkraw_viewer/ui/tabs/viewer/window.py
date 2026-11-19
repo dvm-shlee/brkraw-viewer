@@ -16,9 +16,9 @@ class ViewerTab:
         self._cb = callbacks
         self.frame = ttk.Frame(parent)
         self.frame.columnconfigure(0, weight=1)
-        self.frame.rowconfigure(0, weight=0)
-        self.frame.rowconfigure(1, weight=1)
-        self.frame.rowconfigure(2, weight=0)
+        self.frame.columnconfigure(1, weight=0)
+        self.frame.rowconfigure(0, weight=1)
+        self.frame.rowconfigure(1, weight=0)
         try:
             self.frame.grid_anchor("n")
         except Exception:
@@ -26,14 +26,15 @@ class ViewerTab:
 
         setattr(self.frame, "_tab_instance", self)
 
-        self.top = ViewerTopPanel(self.frame, callbacks=self._cb)
-        self.top.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
+        # The control boxes live in a foldable side panel on the right; the viewports take the rest.
+        self.top = ViewerTopPanel(self.frame, callbacks=self._cb, on_fold=lambda: self.right._on_resize())
+        self.top.grid(row=0, column=1, sticky="ns", padx=(0, 8), pady=(8, 0))
 
         self.right = ViewerRightPanel(self.frame, callbacks=self._cb, tool_box=self.top.tool_box)
-        self.right.grid(row=1, column=0, sticky="nsew", padx=8)
+        self.right.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=(8, 0))
 
         self.status = ViewerStatusBar(self.frame)
-        self.status.grid(row=2, column=0, sticky="ew", padx=8, pady=(6, 8))
+        self.status.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=(6, 8))
 
     def set_views(
         self,

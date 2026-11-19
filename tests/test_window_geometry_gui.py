@@ -1,4 +1,4 @@
-"""Window geometry: the top row fits, the status bar stays visible, the window stays on screen.
+"""Window geometry: the side panel fits, the status bar stays visible, the window stays on screen.
 
 ``fit_geometry`` is a pure function and is tested without Tk. The GUI tests need a display and
 ``BRKRAW_VIEWER_SMOKE=1`` (use ``xvfb-run``) like the other GUI tests; the window is built with a
@@ -134,26 +134,25 @@ def _top(win):
     return win.tabs.get_tab("Viewer")._tab_instance.top
 
 
-def _right_edge_of_boxes(win) -> int:
-    top = _top(win)
-    return max(b.winfo_rootx() + b.winfo_width() for b in top._boxes)
-
-
-def test_top_row_boxes_fit_in_window(window):
+def test_side_panel_sits_right_of_the_views_and_fits(window):
     root, win = window.root, window.win
+    tab = win.tabs.get_tab("Viewer")._tab_instance
+    _pump(root)
     win_right = root.winfo_rootx() + root.winfo_width()
-    assert _right_edge_of_boxes(win) <= win_right
-    # even gaps between neighbouring boxes
-    boxes = sorted(_top(win)._boxes, key=lambda b: b.winfo_rootx())
-    gaps = {boxes[i + 1].winfo_rootx() - (boxes[i].winfo_rootx() + boxes[i].winfo_width()) for i in range(4)}
-    assert len(gaps) == 1
+    panel = _top(win)
+    assert panel.winfo_rootx() + panel.winfo_width() <= win_right
+    assert tab.right.winfo_rootx() + tab.right.winfo_width() <= panel.winfo_rootx()
+    assert tab.right.winfo_rooty() == panel.winfo_rooty()  # one row: views and panel side by side
 
 
-def test_top_row_boxes_share_one_top_edge(window):
-    assert len({b.winfo_rooty() for b in _top(window.win)._boxes}) == 1
+def test_side_panel_does_not_cover_the_status_bar(window):
+    root, win = window.root, window.win
+    _pump(root)
+    panel = _top(win)
+    assert panel.winfo_rooty() + panel.winfo_height() <= win.status.winfo_rooty()
 
 
-def test_minimum_width_is_the_top_row_width(window):
+def test_minimum_width_is_the_panel_plus_a_viewport(window):
     root, win = window.root, window.win
     min_w, _ = root.minsize()
     assert min_w >= _top(win).required_width()

@@ -4,7 +4,7 @@ Same set-up as tests/test_paint_tool_gui.py (a real ``MainWindow``, a synthetic 
 through the faked worker, mouse input by ``event_generate`` on the view canvases). Runs only with a
 display and ``BRKRAW_VIEWER_SMOKE=1`` (use Xvfb, docs/dev/gui.md).
 
-- the box sits in the top row between Orientation and Hook; the axis bar above the views has no
+- the box sits in the side panel between Orientation and Hook; the axis bar above the views has no
   ROI or Paint boxes;
 - the modes Crosshair (default), Selection and Drawing; the shape row shows only in Selection;
 - Selection sets a square and a circle ROI and returns to Crosshair, the ROI stays;
@@ -39,17 +39,13 @@ def _frame_by_text(root, text):
 def test_box_sits_between_orientation_and_hook(gui):
     gui.root.update()
     tab = gui.win.tabs.get_tab("Viewer")._tab_instance
-    box = _frame_by_text(tab.top, "ROI tool")
-    assert box is tab.top.tool_box
-    orientation = _frame_by_text(tab.top, "Orientation")
-    hook = _frame_by_text(tab.top, "Hook")
-    control = _frame_by_text(tab.top, "Control")
-    value = _frame_by_text(tab.top, "Value")
-    x = {name: w.winfo_rootx() for name, w in (
-        ("orientation", orientation), ("box", box), ("hook", hook), ("value", value), ("control", control))}
-    assert x["orientation"] < x["box"] < x["hook"]
-    assert x["hook"] <= x["value"] < x["control"]  # Value and Control keep their order to the right
+    sections = tab.top.sections
+    assert list(sections) == ["Orientation", "ROI tool", "Hook", "Value", "Control", "Layers"]
+    box = tab.top.tool_box
+    assert box.master is sections["ROI tool"].body
     assert box.winfo_ismapped()
+    ys = [sections[n].winfo_rooty() for n in sections]
+    assert ys == sorted(ys) and len(set(ys)) == len(ys)  # stacked top to bottom, in this order
     assert not any(w is box for w in _walk(tab.right))
 
 

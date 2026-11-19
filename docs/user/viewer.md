@@ -71,8 +71,13 @@ window/level control yet (see [Known limitations](#known-limitations)).
   values. If the options window cannot open (the scan has no hook, the hook cannot be
   loaded, or it has no options), a message says which.
 
-The window opens wide enough (about 1350 px) for the five boxes of the top row, and its minimum
-width is the width of that row. The window never opens larger than the usable screen area
+The control boxes (Orientation, ROI tool, Hook, Value, Control, Layers) sit in a side panel on the
+right of the views. Click a box title to fold or unfold it (Orientation, ROI tool and Layers start
+open; Hook, Value and Control start folded), and click the narrow handle at the panel's left edge
+to fold the whole panel into a thin strip so the views take the full width. When the boxes are taller
+than the window, the panel scrolls with the mouse wheel. Fold state lasts for the session only.
+
+The window opens at about 1350 px, and its minimum width is the side panel plus a minimum view width. The window never opens larger than the usable screen area
 (taskbar, menu bar and dock excluded) and is placed fully inside it; on a smaller screen the
 views shrink first, and the status bar at the bottom of the window stays visible.
 
@@ -84,7 +89,7 @@ the tab title. The icon at the right of the main status bar opens the worker log
 
 ![The ROI tool box in Drawing mode](img/roi-tool-box.png)
 
-The **ROI tool** box sits in the top row between **Orientation** and **Hook**. Its mode decides
+The **ROI tool** box sits in the side panel between **Orientation** and **Hook**. Its mode decides
 what the mouse does on the three views; exactly one tool owns the mouse at a time.
 
 - **Crosshair** (default): a click moves the crosshair, as before.
@@ -104,7 +109,7 @@ switching away from Selection drops a drag in progress.
 
 ## Layers box
 
-The **Layers** box sits in the top row, right of **Control**. It lists the layers in draw order:
+The **Layers** box sits in the side panel, below **Control**. It lists the layers in draw order:
 the top row is drawn last (on top) and the base layer, the shown scan, is the last row, marked
 "(base)". Each row shows a visibility toggle (click the box in the first column), the name and
 the kind (image, label or rgb).

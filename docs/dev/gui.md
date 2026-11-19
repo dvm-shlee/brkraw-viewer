@@ -91,9 +91,10 @@ The Tk parts of the ROI tool are covered by the GUI checklist test above
 (`tests/test_checklist_gui.py`); the drag logic, plane mapping and controller wiring
 also have synthetic tests (`tests/test_roi_tool.py`). Check by hand with a 4D scan:
 
-- The ROI tool box (Crosshair / Selection / Drawing) sits in the top row; Crosshair by default,
-  and clicking a view moves the crosshair. The top row holds, left to right, Orientation, ROI tool,
-  Hook and Value, Control, and Layers.
+- The ROI tool box (Crosshair / Selection / Drawing) sits in the side panel; Crosshair by default,
+  and clicking a view moves the crosshair. The side panel (right of the views) stacks foldable
+  sections, top to bottom: Orientation, ROI tool, Hook, Value, Control, and Layers
+  (`ui/components/collapsible.py`; the panel is `ViewerTopPanel`, also named `ViewerSidePanel`).
 - In Selection (Square or Circle), a click does not move the crosshair; dragging draws the outline in
   that view only, and it follows the pointer; zoom (Shift + wheel) keeps it on the same pixels.
 - Release: the mode returns to Crosshair, outline stays, the Timecourse window shows "ROI mean (shape, N voxels)".

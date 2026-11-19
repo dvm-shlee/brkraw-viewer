@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from brkraw_viewer.ui.components.collapsible import CollapsibleSection
 from brkraw_viewer.ui.tabs.viewer.roi_tool_box import RoiToolBox
 from brkraw_viewer.ui.tabs.viewer.layers_box import LayersBox
 from brkraw_viewer.ui.windows.hook_options import refresh_open_dialog, show_hook_options
@@ -10,40 +11,62 @@ from brkraw_viewer.ui.windows.hook_options import refresh_open_dialog, show_hook
 
 class ViewerTopPanel(ttk.Frame):
     _GAP = 8
+    MIN_VIEWPORT_WIDTH = 480
 
-    def __init__(self, parent: tk.Misc, *, callbacks) -> None:
+    def __init__(self, parent: tk.Misc, *, callbacks, on_fold=None) -> None:
         super().__init__(parent)
         self._callbacks = callbacks
+        self._on_fold = on_fold
         self._suspend_zoom = False
-        self.grid_propagate(False)
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=0)
-        self.columnconfigure(2, weight=0)
-        self.columnconfigure(3, weight=0)
-        self.columnconfigure(4, weight=1)
+        self._sections: dict[str, CollapsibleSection] = {}
+        self._panel_open = True
 
-        left_container = ttk.Frame(self, width=300)
-        left_container.grid(row=0, column=0, sticky="n", padx=(0, 8))
-        left_container.grid_propagate(False)
-        tool_container = ttk.Frame(self, width=260)
-        tool_container.grid(row=0, column=1, sticky="n", padx=(8, 8))
-        tool_container.grid_propagate(False)
-        mid_container = ttk.Frame(self, width=240)
-        mid_container.grid(row=0, column=2, sticky="n", padx=(8, 8))
-        mid_container.grid_propagate(False)
-        right_container = ttk.Frame(self, width=240)
-        right_container.grid(row=0, column=3, sticky="n", padx=(8, 0))
-        right_container.grid_propagate(False)
-        layers_container = ttk.Frame(self, width=280)
-        layers_container.grid(row=0, column=4, sticky="n", padx=(8, 0))
-        layers_container.grid_propagate(False)
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=0)
+        self.columnconfigure(1, weight=1)
+        self._handle = ttk.Button(self, text="\u25b8", width=2, command=self.toggle_panel)
+        self._handle.grid(row=0, column=0, sticky="ns", padx=(0, 2))
 
-        left = ttk.Frame(left_container)
-        left.place(relx=0.5, rely=0.0, anchor="n", width=300)
-        left.columnconfigure(0, weight=1)
+        self._wrap = ttk.Frame(self)
+        self._wrap.grid(row=0, column=1, sticky="nsew")
+        self._wrap.rowconfigure(0, weight=1)
+        self._wrap.columnconfigure(0, weight=1)
+        self._canvas = tk.Canvas(
+            self._wrap,
+            highlightthickness=0,
+            borderwidth=0,
+            width=1,
+            height=1,
+            background=ttk.Style(self).lookup("TFrame", "background") or self.cget("background"),
+        )
+        self._scroll = ttk.Scrollbar(self._wrap, orient=tk.VERTICAL, command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=self._scroll.set)
+        self._canvas.grid(row=0, column=0, sticky="nsew")
+        self._scroll.grid(row=0, column=1, sticky="ns")
+        self._inner = ttk.Frame(self._canvas)
+        self._inner.columnconfigure(0, weight=1)
+        self._window = self._canvas.create_window(0, 0, window=self._inner, anchor="nw")
+        self._inner.bind("<Configure>", self._on_inner_configure)
+        self._canvas.bind("<Configure>", self._on_canvas_configure)
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.bind_all(seq, self._on_wheel, add="+")
 
-        self.orientation_frame = ttk.LabelFrame(left, text="Orientation", padding=(4, 4))
-        self.orientation_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 0))
+        def section(title: str, expanded: bool) -> CollapsibleSection:
+            sec = CollapsibleSection(self._inner, title, expanded=expanded, on_toggle=lambda _o: self._after_fold())
+            sec.grid(row=len(self._sections), column=0, sticky="ew", pady=(0, 4))
+            sec.body.columnconfigure(0, weight=1)
+            self._sections[title] = sec
+            return sec
+
+        sec_orientation = section("Orientation", True)
+        sec_tool = section("ROI tool", True)
+        sec_hook = section("Hook", False)
+        sec_value = section("Value", False)
+        sec_control = section("Control", False)
+        sec_layers = section("Layers", True)
+
+        self.orientation_frame = ttk.Frame(sec_orientation.body, padding=(4, 2))
+        self.orientation_frame.grid(row=0, column=0, sticky="nsew")
         self.orientation_frame.columnconfigure(1, weight=1, uniform="viewer_orientation_cols")
         self.orientation_frame.columnconfigure(2, weight=1, uniform="viewer_orientation_cols")
 
@@ -126,17 +149,11 @@ class ViewerTopPanel(ttk.Frame):
             command=lambda: self._on_flip(callbacks, "z"),
         ).pack(side=tk.LEFT)
 
-        tool = ttk.Frame(tool_container)
-        tool.place(relx=0.5, rely=0.0, anchor="n", width=260)
-        tool.columnconfigure(0, weight=1)
-        self.tool_box = RoiToolBox(tool, callbacks=callbacks)
+        self.tool_box = RoiToolBox(sec_tool.body, callbacks=callbacks)
+        self.tool_box.configure(text="")  # the section header carries the title
         self.tool_box.grid(row=0, column=0, sticky="nsew")
 
-        mid = ttk.Frame(mid_container)
-        mid.place(relx=0.5, rely=0.0, anchor="n", width=240)
-        mid.columnconfigure(0, weight=1)
-
-        hook_frame = ttk.LabelFrame(mid, text="Hook", padding=(6, 4))
+        hook_frame = ttk.Frame(sec_hook.body, padding=(6, 4))
         hook_frame.grid(row=0, column=0, sticky="nsew")
         hook_frame.columnconfigure(1, weight=1)
 
@@ -163,8 +180,8 @@ class ViewerTopPanel(ttk.Frame):
         self._hook_options_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
         self._value_var = tk.StringVar(master=self, value="-")
-        value_frame = ttk.LabelFrame(mid, text="Value", padding=(6, 4))
-        value_frame.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
+        value_frame = ttk.Frame(sec_value.body, padding=(6, 4))
+        value_frame.grid(row=0, column=0, sticky="nsew")
         value_frame.columnconfigure(0, weight=1)
         
         self._value_button = ttk.Button(
@@ -175,11 +192,7 @@ class ViewerTopPanel(ttk.Frame):
         )
         self._value_button.grid(row=0, column=0, sticky="ew")
 
-        right = ttk.Frame(right_container)
-        right.place(relx=0.5, rely=0.0, anchor="n", width=240)
-        right.columnconfigure(0, weight=1)
-
-        self.control_frame = ttk.LabelFrame(right, text="Control", padding=(6, 4))
+        self.control_frame = ttk.Frame(sec_control.body, padding=(6, 4))
         self.control_frame.grid(row=0, column=0, sticky="nsew")
         self.control_frame.columnconfigure(0, weight=1)
 
@@ -226,90 +239,95 @@ class ViewerTopPanel(ttk.Frame):
         self._zoom_scale.set(1.0)
         self._zoom_scale.pack(side=tk.TOP, fill=tk.X, expand=True)
 
-        layers = ttk.Frame(layers_container)
-        layers.place(relx=0.5, rely=0.0, anchor="n", width=280)
-        layers.columnconfigure(0, weight=1)
-        self.layers_box = LayersBox(layers, callbacks=callbacks, on_changed=self.tool_box.refresh)
+        self.layers_box = LayersBox(sec_layers.body, callbacks=callbacks, on_changed=self.tool_box.refresh)
+        self.layers_box.configure(text="")  # the section header carries the title
         self.layers_box.grid(row=0, column=0, sticky="nsew")
 
-        self._boxes = [left, tool, mid, right, layers]
+    # ---- side panel: scrolling and folding ----
 
-        def _resize(_event: tk.Event | None = None) -> None:
-            width = max(self.winfo_width(), 1)
-            
-            w_left = max(left.winfo_reqwidth(), 10)
-            w_tool = max(tool.winfo_reqwidth(), 10)
-            w_mid = max(mid.winfo_reqwidth(), 10)
-            w_right = max(right.winfo_reqwidth(), 10)
-            w_layers = max(layers.winfo_reqwidth(), 10)
-            gap = self._GAP
-            
-            total_req = w_left + w_tool + w_mid + w_right + w_layers + (gap * 4)
-            start_x = max(0, (width - total_req) // 2)
-            
-            left_container.grid_forget()
-            tool_container.grid_forget()
-            mid_container.grid_forget()
-            right_container.grid_forget()
-            layers_container.grid_forget()
-            
-            x = start_x
-            
-            h_left = max(left.winfo_reqheight(), 1)
-            h_tool = max(tool.winfo_reqheight(), 1)
-            h_mid = max(mid.winfo_reqheight(), 1)
-            h_right = max(right.winfo_reqheight(), 1)
-            h_layers = max(layers.winfo_reqheight(), 1)
-            
-            max_h = max(h_left, h_tool, h_mid, h_right, h_layers)
-            
-            left_container.place(x=x, y=0, width=w_left, height=max_h)
-            y_left = 0  # top-aligned
-            left.place(relx=0, anchor="nw", x=0, y=y_left, width=w_left, height=h_left)
-            x += w_left + gap
-            
-            tool_container.place(x=x, y=0, width=w_tool, height=max_h)
-            y_tool = 0  # top-aligned
-            tool.place(relx=0, anchor="nw", x=0, y=y_tool, width=w_tool, height=h_tool)
-            x += w_tool + gap
+    def _on_inner_configure(self, _event: object = None) -> None:
+        try:
+            self._canvas.configure(scrollregion=self._canvas.bbox("all"), width=self._inner.winfo_reqwidth())
+            if self._inner.winfo_reqheight() <= self._canvas.winfo_height():
+                self._canvas.yview_moveto(0.0)
+        except tk.TclError:
+            pass
 
-            mid_container.place(x=x, y=0, width=w_mid, height=max_h)
-            y_mid = 0  # top-aligned
-            mid.place(relx=0, anchor="nw", x=0, y=y_mid, width=w_mid, height=h_mid)
-            x += w_mid + gap
-            
-            right_container.place(x=x, y=0, width=w_right, height=max_h)
-            y_right = 0  # top-aligned
-            right.place(relx=0, anchor="nw", x=0, y=y_right, width=w_right, height=h_right)
-            x += w_right + gap
+    def _on_canvas_configure(self, event: tk.Event) -> None:
+        try:
+            self._canvas.itemconfigure(self._window, width=max(int(event.width), 1))
+            if self._inner.winfo_reqheight() <= int(event.height):
+                self._canvas.yview_moveto(0.0)
+        except tk.TclError:
+            pass
 
-            layers_container.place(x=x, y=0, width=w_layers, height=max_h)
-            y_layers = 0  # top-aligned
-            layers.place(relx=0, anchor="nw", x=0, y=y_layers, width=w_layers, height=h_layers)
-            
-            try:
-                self.configure(height=max_h)
-            except Exception:
-                pass
-            used = (w_left, w_tool, w_mid, w_right, w_layers)
-            self.after_idle(lambda: _settle(used))
-
-        def _settle(used: tuple[int, ...]) -> None:
-            # A box can change its requested width after placement (for example a hidden row
-            # appears); lay out again so the gaps stay equal.
-            try:
-                now = tuple(max(b.winfo_reqwidth(), 10) for b in self._boxes)
-            except tk.TclError:
+    def _on_wheel(self, event: tk.Event) -> None:
+        try:
+            if not self.winfo_exists() or not self._panel_open:
                 return
-            if now != used:
-                _resize()
+            target = self.winfo_containing(event.x_root, event.y_root)
+            while target is not None and target is not self:
+                target = target.master
+            if target is None:
+                return
+            if self._inner.winfo_reqheight() <= self._canvas.winfo_height():
+                return
+            num = getattr(event, "num", 0)
+            if num == 4:
+                step = -1
+            elif num == 5:
+                step = 1
+            else:
+                delta = int(getattr(event, "delta", 0))
+                if delta == 0:
+                    return
+                step = -1 if delta > 0 else 1
+                if abs(delta) >= 120:  # Windows reports multiples of 120; macOS small steps
+                    step = int(-delta / 120)
+            self._canvas.yview_scroll(step, "units")
+        except (tk.TclError, KeyError, AttributeError):
+            pass
 
-        self.bind("<Configure>", _resize)
-        self.after(0, _resize)
+    @property
+    def sections(self) -> dict[str, CollapsibleSection]:
+        """The foldable sections by title, in panel order."""
+        return dict(self._sections)
+
+    @property
+    def panel_open(self) -> bool:
+        return self._panel_open
+
+    def toggle_panel(self) -> None:
+        self.set_panel_open(not self._panel_open)
+
+    def set_panel_open(self, is_open: bool) -> None:
+        is_open = bool(is_open)
+        if is_open == self._panel_open:
+            return
+        self._panel_open = is_open
+        if is_open:
+            self._wrap.grid()
+            self._handle.configure(text="\u25b8")
+        else:
+            self._wrap.grid_remove()
+            self._handle.configure(text="\u25c2")
+        self._after_fold()
+
+    def _after_fold(self) -> None:
+        # Refresh the scroll region, then run the viewport refit (the one bound to <Configure>) explicitly.
+        self.after_idle(self._on_inner_configure)
+        if callable(self._on_fold):
+            self.after_idle(self._on_fold)
+
+    def panel_width(self) -> int:
+        """Width of the open side panel: handle, boxes and scrollbar."""
+        return int(
+            self._handle.winfo_reqwidth() + self._inner.winfo_reqwidth() + self._scroll.winfo_reqwidth() + self._GAP
+        )
 
     def required_width(self) -> int:
-        """Width the five boxes need side by side, gaps included."""
-        return int(sum(max(w.winfo_reqwidth(), 10) for w in self._boxes) + self._GAP * (len(self._boxes) - 1))
+        """Smallest sensible width: the open side panel plus a minimum viewport width."""
+        return self.panel_width() + self.MIN_VIEWPORT_WIDTH
 
     def _on_hook_toggle(self, callbacks) -> None:
         handler = getattr(callbacks, "on_viewer_hook_toggle", None)
@@ -467,3 +485,6 @@ class ViewerTopPanel(ttk.Frame):
             _recursive_set(self.orientation_frame)
         if hasattr(self, "control_frame"):
             _recursive_set(self.control_frame)
+
+
+ViewerSidePanel = ViewerTopPanel

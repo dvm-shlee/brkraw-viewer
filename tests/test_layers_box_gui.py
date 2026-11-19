@@ -4,7 +4,7 @@ Same set-up as tests/test_paint_tool_gui.py (a real ``MainWindow``, a synthetic 
 through the faked worker). Runs only with a display and ``BRKRAW_VIEWER_SMOKE=1`` (use Xvfb,
 docs/dev/gui.md).
 
-- the box sits in the top row, right of Control;
+- the box sits in the side panel, last section below Control;
 - the list shows the layers in draw order, the base layer last and marked "(base)";
 - selecting an editable label layer enables Drawing, any other row disables it;
 - New label layer adds a layer and selects it;
@@ -65,15 +65,15 @@ def _listed(gui):
     return list(gui.layers.tree.get_children())
 
 
-def test_box_sits_right_of_control(gui):
+def test_box_sits_below_control(gui):
     gui.root.update()
     tab = gui.win.tabs.get_tab("Viewer")._tab_instance
-    box = _frame_by_text(tab.top, "Layers")
-    control = _frame_by_text(tab.top, "Control")
-    assert box is tab.top.layers_box is gui.layers
+    sections = tab.top.sections
+    box = tab.top.layers_box
+    assert box is gui.layers and box.master is sections["Layers"].body
     assert box.winfo_ismapped()
-    assert control.winfo_rootx() < box.winfo_rootx()
-    assert control.winfo_rootx() + control.winfo_width() <= box.winfo_rootx()
+    control = sections["Control"]
+    assert control.winfo_rooty() < sections["Layers"].winfo_rooty()  # Layers is the last section
 
 
 def test_list_order_and_base_marking(gui):
